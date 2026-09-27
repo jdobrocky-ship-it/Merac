@@ -1,0 +1,3618 @@
+<!DOCTYPE html>
+<html lang="sk">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<title>Merace – CLIP</title>
+
+<style>
+
+body {
+    font-family: Arial, sans-serif;
+    margin: 0;
+    padding: 15px;
+    background: #f2f2f2;
+}
+
+h1 {
+    margin-top: 0;
+}
+
+button {
+    padding: 9px 13px;
+    margin: 3px;
+    cursor: pointer;
+}
+
+input {
+    padding: 8px;
+    margin: 3px;
+}
+
+.section {
+    background: white;
+    padding: 15px;
+    margin-bottom: 15px;
+    border-radius: 10px;
+}
+
+.type-card {
+    border: 1px solid #ccc;
+    padding: 12px;
+    margin: 10px 0;
+    border-radius: 8px;
+    background: #fafafa;
+}
+
+.photo-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-top: 10px;
+}
+
+.photo-item {
+    width: 130px;
+    border: 1px solid #ccc;
+    padding: 5px;
+    border-radius: 6px;
+    background: white;
+}
+
+.photo-item img {
+    width: 100%;
+    height: 100px;
+    object-fit: cover;
+}
+
+.small {
+    font-size: 12px;
+    color: #666;
+}
+
+.status {
+    padding: 10px;
+    background: #e8f0ff;
+    border-radius: 6px;
+    margin-bottom: 10px;
+}
+
+.success {
+    background: #e5f7e8;
+}
+
+.danger {
+    background: #ffe5e5;
+}
+
+.hidden {
+    display: none;
+}
+
+#clipProgress {
+    margin-top: 8px;
+    font-size: 13px;
+}
+
+</style>
+</head>
+
+<body>
+
+<h1>Merace – CLIP</h1>
+
+<div id="status" class="status">
+    Inicializácia...
+</div>
+
+<div id="clipProgress"></div>
+
+
+<div class="section">
+
+    <button onclick="showLearning()">
+        UČENIE
+    </button>
+
+    <button onclick="showUsage()">
+        POUŽITIE
+    </button>
+
+    <button onclick="exportBackup()">
+        Export ZIP
+    </button>
+
+    <button onclick="document.getElementById('importFile').click()">
+        Import ZIP
+    </button>
+
+    <input
+        type="file"
+        id="importFile"
+        accept=".zip"
+        class="hidden"
+        onchange="importBackup(this.files[0])"
+    >
+
+</div>
+
+
+<!-- =====================================================
+     UČENIE
+====================================================== -->
+
+<div id="learningSection" class="section">
+
+    <h2>UČENIE</h2>
+
+    <button onclick="addMeterType()">
+        + Nový typ merača
+    </button>
+
+    <div id="meterTypesContainer"></div>
+
+</div>
+
+
+<!-- =====================================================
+     POUŽITIE
+====================================================== -->
+
+<div id="usageSection" class="section hidden">
+
+    <h2>POUŽITIE</h2>
+
+    <p>
+        Rozpoznávanie ešte nie je zapojené.
+        CLIP embeddingy už ale vytvárame a ukladáme.
+    </p>
+
+    <div id="usageContainer"></div>
+
+</div>
+
+
+<!-- =====================================================
+     DATABASE INFO
+====================================================== -->
+
+<div class="section">
+
+    <h3>Databáza</h3>
+
+    <div id="dbInfo"></div>
+
+    <button
+        class="danger"
+        onclick="clearDatabase(true)"
+    >
+        Vymazať celú databázu
+    </button>
+
+</div>
+
+
+<script type="module">
+
+/*
+ * =========================================================
+ * TRANSFORMERS.JS
+ * =========================================================
+ *
+ * Používame stabilnú verziu 3.8.1.
+ *
+ * Model:
+ * Xenova/clip-vit-base-patch32
+ *
+ * Výstup:
+ * 512-rozmerný obrazový embedding.
+ */
+
+import {
+    pipeline
+} from "https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.8.1";
+
+
+/* =========================================================
+   KONFIGURÁCIA
+========================================================= */
+
+const DB_NAME =
+    "MeraceTestDB";
+
+const DB_VERSION =
+    1;
+
+
+/*
+ * Formát ZIP zálohy je oddelený
+ * od verzie IndexedDB.
+ */
+const BACKUP_FORMAT =
+    2;
+
+
+/*
+ * Aktuálny CLIP model.
+ */
+const EMBEDDING_MODEL =
+    "Xenova/clip-vit-base-patch32";
+
+
+/*
+ * CLIP ViT-B/32 má obrazové embeddingy
+ * veľkosti 512.
+ */
+const EMBEDDING_SIZE =
+    512;
+
+
+let db = null;
+
+
+/*
+ * CLIP pipeline sa vytvorí iba raz.
+ */
+let clipExtractor =
+    null;
+
+
+/*
+ * true počas načítavania modelu.
+ */
+let clipLoading =
+    false;
+
+
+/*
+ * Zoznamy otvorených fotografií.
+ */
+const openPhotoIds =
+    new Set();
+
+
+/*
+ * Blob URL fotografie.
+ */
+const photoObjectURLs =
+    new Map();
+
+
+/* =========================================================
+   STATUS
+========================================================= */
+
+function setStatus(
+    text,
+    error = false
+) {
+
+    const el =
+        document.getElementById(
+            "status"
+        );
+
+    el.textContent =
+        text;
+
+    el.className =
+        error
+            ? "status danger"
+            : "status";
+}
+
+
+function setClipProgress(
+    text
+) {
+
+    document.getElementById(
+        "clipProgress"
+    ).textContent =
+        text;
+}
+
+
+/* =========================================================
+   ID
+========================================================= */
+
+function id() {
+
+    return crypto.randomUUID();
+}
+
+
+/* =========================================================
+   HTML ESCAPE
+========================================================= */
+
+function escapeHTML(
+    value
+) {
+
+    if (
+        value === null ||
+        value === undefined
+    ) {
+        return "";
+    }
+
+    return String(value)
+        .replace(
+            /&/g,
+            "&amp;"
+        )
+        .replace(
+            /</g,
+            "&lt;"
+        )
+        .replace(
+            />/g,
+            "&gt;"
+        )
+        .replace(
+            /"/g,
+            "&quot;"
+        )
+        .replace(
+            /'/g,
+            "&#039;"
+        );
+}
+
+
+/* =========================================================
+   VEKTOR
+========================================================= */
+
+function normalize(
+    vector
+) {
+
+    let sum = 0;
+
+    for (
+        const value of vector
+    ) {
+
+        sum +=
+            value * value;
+    }
+
+    const length =
+        Math.sqrt(sum);
+
+
+    if (!length) {
+
+        return vector.map(
+            () => 0
+        );
+    }
+
+
+    return vector.map(
+        value =>
+            value / length
+    );
+}
+
+
+function averageVectors(
+    vectors
+) {
+
+    if (
+        !vectors.length
+    ) {
+        return null;
+    }
+
+
+    const result =
+        new Array(
+            vectors[0].length
+        ).fill(0);
+
+
+    for (
+        const vector
+        of vectors
+    ) {
+
+        for (
+            let i = 0;
+            i < vector.length;
+            i++
+        ) {
+
+            result[i] +=
+                vector[i];
+        }
+    }
+
+
+    for (
+        let i = 0;
+        i < result.length;
+        i++
+    ) {
+
+        result[i] /=
+            vectors.length;
+    }
+
+
+    /*
+     * Dôležité:
+     * pri CLIP prototyp znova
+     * normalizujeme.
+     */
+    return normalize(
+        result
+    );
+}
+
+
+/* =========================================================
+   CLIP – NAČÍTANIE MODELU
+========================================================= */
+
+async function loadCLIP() {
+
+    if (
+        clipExtractor
+    ) {
+
+        return clipExtractor;
+    }
+
+
+    if (
+        clipLoading
+    ) {
+
+        while (
+            clipLoading
+        ) {
+
+            await new Promise(
+                resolve =>
+                    setTimeout(
+                        resolve,
+                        100
+                    )
+            );
+        }
+
+        return clipExtractor;
+    }
+
+
+    clipLoading =
+        true;
+
+
+    try {
+
+        setStatus(
+            "CLIP: načítavam model..."
+        );
+
+
+        setClipProgress(
+            "Prvé načítanie môže trvať dlhšie. Model sa potom cachuje."
+        );
+
+
+        clipExtractor =
+            await pipeline(
+                "image-feature-extraction",
+                EMBEDDING_MODEL,
+                {
+                    progress_callback:
+                        progress => {
+
+                            /*
+                             * Nie všetky typy
+                             * progress správ majú
+                             * rovnakú štruktúru.
+                             */
+
+                            if (
+                                progress &&
+                                typeof progress.progress ===
+                                "number"
+                            ) {
+
+                                setClipProgress(
+                                    `CLIP: ${Math.round(progress.progress)} %`
+                                );
+                            }
+                        }
+                }
+            );
+
+
+        setStatus(
+            "✓ CLIP je pripravený."
+        );
+
+
+        setClipProgress(
+            `Model: ${EMBEDDING_MODEL}`
+        );
+
+
+        return clipExtractor;
+
+
+    } catch (error) {
+
+        console.error(
+            "CLIP loading error:",
+            error
+        );
+
+
+        clipExtractor =
+            null;
+
+
+        setStatus(
+            "CLIP sa nepodarilo načítať: " +
+            error.message,
+            true
+        );
+
+
+        setClipProgress(
+            ""
+        );
+
+
+        throw error;
+
+
+    } finally {
+
+        clipLoading =
+            false;
+    }
+}
+
+
+/* =========================================================
+   CLIP – EMBEDDING FOTOGRAFIE
+========================================================= */
+
+async function createCLIPEmbedding(
+    blob
+) {
+
+    const extractor =
+        await loadCLIP();
+
+
+    /*
+     * Blob prevedieme na dočasnú URL.
+     */
+    const url =
+        URL.createObjectURL(
+            blob
+        );
+
+
+    try {
+
+        setClipProgress(
+            "CLIP: analyzujem fotografiu..."
+        );
+
+
+        const output =
+            await extractor(
+                url
+            );
+
+
+        /*
+         * Transformers.js vracia Tensor.
+         *
+         * Pri CLIP:
+         * [1, 512]
+         */
+        let vector =
+            Array.from(
+                output.data
+            );
+
+
+        /*
+         * Kontrola rozmeru.
+         */
+        if (
+            vector.length !==
+            EMBEDDING_SIZE
+        ) {
+
+            throw new Error(
+                `CLIP vrátil ${vector.length} hodnôt namiesto ${EMBEDDING_SIZE}.`
+            );
+        }
+
+
+        /*
+         * Finálna L2 normalizácia.
+         */
+        vector =
+            normalize(
+                vector
+            );
+
+
+        setClipProgress(
+            `CLIP: hotovo (${vector.length} hodnôt)`
+        );
+
+
+        return vector;
+
+
+    } finally {
+
+        URL.revokeObjectURL(
+            url
+        );
+    }
+}
+
+
+/* =========================================================
+   INDEXEDDB
+========================================================= */
+
+function openDatabase() {
+
+    return new Promise(
+        (resolve, reject) => {
+
+            const request =
+                indexedDB.open(
+                    DB_NAME,
+                    DB_VERSION
+                );
+
+
+            request.onupgradeneeded =
+                event => {
+
+                    const database =
+                        event.target.result;
+
+
+                    if (
+                        !database.objectStoreNames.contains(
+                            "meterTypes"
+                        )
+                    ) {
+
+                        database.createObjectStore(
+                            "meterTypes",
+                            {
+                                keyPath:
+                                    "id"
+                            }
+                        );
+                    }
+
+
+                    if (
+                        !database.objectStoreNames.contains(
+                            "photos"
+                        )
+                    ) {
+
+                        const store =
+                            database.createObjectStore(
+                                "photos",
+                                {
+                                    keyPath:
+                                        "id"
+                                }
+                            );
+
+
+                        store.createIndex(
+                            "meterTypeId",
+                            "meterTypeId",
+                            {
+                                unique:
+                                    false
+                            }
+                        );
+                    }
+
+
+                    if (
+                        !database.objectStoreNames.contains(
+                            "embeddings"
+                        )
+                    ) {
+
+                        const store =
+                            database.createObjectStore(
+                                "embeddings",
+                                {
+                                    keyPath:
+                                        "id"
+                                }
+                            );
+
+
+                        store.createIndex(
+                            "photoId",
+                            "photoId",
+                            {
+                                unique:
+                                    true
+                            }
+                        );
+
+
+                        store.createIndex(
+                            "meterTypeId",
+                            "meterTypeId",
+                            {
+                                unique:
+                                    false
+                            }
+                        );
+                    }
+
+
+                    if (
+                        !database.objectStoreNames.contains(
+                            "prototypes"
+                        )
+                    ) {
+
+                        database.createObjectStore(
+                            "prototypes",
+                            {
+                                keyPath:
+                                    "meterTypeId"
+                            }
+                        );
+                    }
+
+
+                    if (
+                        !database.objectStoreNames.contains(
+                            "settings"
+                        )
+                    ) {
+
+                        database.createObjectStore(
+                            "settings",
+                            {
+                                keyPath:
+                                    "id"
+                            }
+                        );
+                    }
+                };
+
+
+            request.onsuccess =
+                event => {
+
+                    db =
+                        event.target.result;
+
+
+                    db.onversionchange =
+                        () => {
+                            db.close();
+                        };
+
+
+                    resolve(
+                        db
+                    );
+                };
+
+
+            request.onerror =
+                () => {
+
+                    reject(
+                        request.error
+                    );
+                };
+        }
+    );
+}
+
+
+/* =========================================================
+   DB HELPERS
+========================================================= */
+
+function getAll(
+    storeName
+) {
+
+    return new Promise(
+        (resolve, reject) => {
+
+            const tx =
+                db.transaction(
+                    storeName,
+                    "readonly"
+                );
+
+
+            const request =
+                tx.objectStore(
+                    storeName
+                ).getAll();
+
+
+            request.onsuccess =
+                () =>
+                    resolve(
+                        request.result
+                    );
+
+
+            request.onerror =
+                () =>
+                    reject(
+                        request.error
+                    );
+        }
+    );
+}
+
+
+function getById(
+    storeName,
+    key
+) {
+
+    return new Promise(
+        (resolve, reject) => {
+
+            const tx =
+                db.transaction(
+                    storeName,
+                    "readonly"
+                );
+
+
+            const request =
+                tx.objectStore(
+                    storeName
+                ).get(key);
+
+
+            request.onsuccess =
+                () =>
+                    resolve(
+                        request.result
+                    );
+
+
+            request.onerror =
+                () =>
+                    reject(
+                        request.error
+                    );
+        }
+    );
+}
+
+
+function getByIndex(
+    storeName,
+    indexName,
+    value
+) {
+
+    return new Promise(
+        (resolve, reject) => {
+
+            const tx =
+                db.transaction(
+                    storeName,
+                    "readonly"
+                );
+
+
+            const request =
+                tx.objectStore(
+                    storeName
+                )
+                .index(indexName)
+                .get(value);
+
+
+            request.onsuccess =
+                () =>
+                    resolve(
+                        request.result
+                    );
+
+
+            request.onerror =
+                () =>
+                    reject(
+                        request.error
+                    );
+        }
+    );
+}
+
+
+function getAllByIndex(
+    storeName,
+    indexName,
+    value
+) {
+
+    return new Promise(
+        (resolve, reject) => {
+
+            const tx =
+                db.transaction(
+                    storeName,
+                    "readonly"
+                );
+
+
+            const request =
+                tx.objectStore(
+                    storeName
+                )
+                .index(indexName)
+                .getAll(value);
+
+
+            request.onsuccess =
+                () =>
+                    resolve(
+                        request.result
+                    );
+
+
+            request.onerror =
+                () =>
+                    reject(
+                        request.error
+                    );
+        }
+    );
+}
+
+
+function put(
+    storeName,
+    data
+) {
+
+    return new Promise(
+        (resolve, reject) => {
+
+            const tx =
+                db.transaction(
+                    storeName,
+                    "readwrite"
+                );
+
+
+            tx.objectStore(
+                storeName
+            ).put(data);
+
+
+            tx.oncomplete =
+                resolve;
+
+
+            tx.onerror =
+                () =>
+                    reject(
+                        tx.error
+                    );
+
+
+            tx.onabort =
+                () =>
+                    reject(
+                        tx.error ||
+                        new Error(
+                            "Transakcia bola prerušená."
+                        )
+                    );
+        }
+    );
+}
+
+
+function deleteRecord(
+    storeName,
+    key
+) {
+
+    return new Promise(
+        (resolve, reject) => {
+
+            const tx =
+                db.transaction(
+                    storeName,
+                    "readwrite"
+                );
+
+
+            tx.objectStore(
+                storeName
+            ).delete(key);
+
+
+            tx.oncomplete =
+                resolve;
+
+
+            tx.onerror =
+                () =>
+                    reject(
+                        tx.error
+                    );
+
+
+            tx.onabort =
+                () =>
+                    reject(
+                        tx.error ||
+                        new Error(
+                            "Transakcia bola prerušená."
+                        )
+                    );
+        }
+    );
+}
+
+
+function deleteByIndex(
+    storeName,
+    indexName,
+    value
+) {
+
+    return new Promise(
+        (resolve, reject) => {
+
+            const tx =
+                db.transaction(
+                    storeName,
+                    "readwrite"
+                );
+
+
+            const store =
+                tx.objectStore(
+                    storeName
+                );
+
+
+            const request =
+                store
+                .index(indexName)
+                .openCursor(
+                    IDBKeyRange.only(
+                        value
+                    )
+                );
+
+
+            request.onsuccess =
+                event => {
+
+                    const cursor =
+                        event.target.result;
+
+
+                    if (cursor) {
+
+                        cursor.delete();
+
+                        cursor.continue();
+                    }
+                };
+
+
+            tx.oncomplete =
+                resolve;
+
+
+            tx.onerror =
+                () =>
+                    reject(
+                        tx.error
+                    );
+
+
+            tx.onabort =
+                () =>
+                    reject(
+                        tx.error ||
+                        new Error(
+                            "Transakcia bola prerušená."
+                        )
+                    );
+        }
+    );
+}
+
+
+/* =========================================================
+   FOTO + EMBEDDING – JEDNA TRANSAKCIA
+========================================================= */
+
+function putPhotoAndEmbedding(
+    photo,
+    embedding
+) {
+
+    return new Promise(
+        (resolve, reject) => {
+
+            const tx =
+                db.transaction(
+                    [
+                        "photos",
+                        "embeddings"
+                    ],
+                    "readwrite"
+                );
+
+
+            tx.objectStore(
+                "photos"
+            ).put(photo);
+
+
+            tx.objectStore(
+                "embeddings"
+            ).put(embedding);
+
+
+            tx.oncomplete =
+                resolve;
+
+
+            tx.onerror =
+                () =>
+                    reject(
+                        tx.error
+                    );
+
+
+            tx.onabort =
+                () =>
+                    reject(
+                        tx.error ||
+                        new Error(
+                            "Foto a embedding sa nepodarilo uložiť."
+                        )
+                    );
+        }
+    );
+}
+
+
+/* =========================================================
+   NOVÝ TYP
+========================================================= */
+
+async function addMeterType() {
+
+    const name =
+        prompt(
+            "Názov typu merača:"
+        );
+
+
+    if (
+        !name ||
+        !name.trim()
+    ) {
+        return;
+    }
+
+
+    const meterType = {
+
+        id:
+            "meter-" + id(),
+
+        name:
+            name.trim(),
+
+        manufacturer:
+            "",
+
+        model:
+            "",
+
+        created:
+            new Date().toISOString(),
+
+        referencePhotoId:
+            null,
+
+        ocrRegions: {
+
+            serialNumber:
+                null,
+
+            nominalFlow:
+                null,
+
+            meterStatus:
+                null
+        }
+    };
+
+
+    try {
+
+        await put(
+            "meterTypes",
+            meterType
+        );
+
+
+        setStatus(
+            "Typ merača bol vytvorený."
+        );
+
+
+        await refreshUI();
+
+
+    } catch (error) {
+
+        console.error(error);
+
+
+        setStatus(
+            "Typ merača sa nepodarilo vytvoriť.",
+            true
+        );
+    }
+}
+
+
+/* =========================================================
+   ÚPRAVA TYPU
+========================================================= */
+
+async function editMeterType(
+    meterTypeId
+) {
+
+    const type =
+        await getById(
+            "meterTypes",
+            meterTypeId
+        );
+
+
+    if (!type) {
+        return;
+    }
+
+
+    const name =
+        prompt(
+            "Nový názov:",
+            type.name
+        );
+
+
+    if (
+        name === null ||
+        !name.trim()
+    ) {
+        return;
+    }
+
+
+    type.name =
+        name.trim();
+
+
+    /*
+     * ID sa nemení.
+     */
+    await put(
+        "meterTypes",
+        type
+    );
+
+
+    setStatus(
+        "Názov bol upravený."
+    );
+
+
+    await refreshUI();
+}
+
+
+/* =========================================================
+   PRIDANIE FOTOGRAFIÍ
+========================================================= */
+
+async function addPhotos(
+    meterTypeId
+) {
+
+    const input =
+        document.createElement(
+            "input"
+        );
+
+
+    input.type =
+        "file";
+
+    input.accept =
+        "image/*";
+
+    input.multiple =
+        true;
+
+
+    input.onchange =
+        async () => {
+
+            const files =
+                Array.from(
+                    input.files || []
+                );
+
+
+            if (
+                !files.length
+            ) {
+                return;
+            }
+
+
+            try {
+
+                /*
+                 * Model sa načíta pred
+                 * prvou fotografiou.
+                 */
+                await loadCLIP();
+
+
+                let processed =
+                    0;
+
+
+                for (
+                    const file
+                    of files
+                ) {
+
+                    setClipProgress(
+                        `CLIP: fotografia ${processed + 1}/${files.length}`
+                    );
+
+
+                    const photoId =
+                        "photo-" + id();
+
+
+                    /*
+                     * Skutočný CLIP embedding.
+                     */
+                    const vector =
+                        await createCLIPEmbedding(
+                            file
+                        );
+
+
+                    const photo = {
+
+                        id:
+                            photoId,
+
+                        meterTypeId,
+
+                        blob:
+                            file,
+
+                        fileName:
+                            file.name,
+
+                        created:
+                            new Date().toISOString()
+                    };
+
+
+                    const embedding = {
+
+                        id:
+                            "embedding-" + id(),
+
+                        photoId,
+
+                        meterTypeId,
+
+                        vector,
+
+                        created:
+                            new Date().toISOString(),
+
+                        model:
+                            EMBEDDING_MODEL
+                    };
+
+
+                    /*
+                     * FOTO + EMBEDDING
+                     * atomicky.
+                     */
+                    await putPhotoAndEmbedding(
+                        photo,
+                        embedding
+                    );
+
+
+                    processed++;
+
+
+                    openPhotoIds.add(
+                        meterTypeId
+                    );
+                }
+
+
+                /*
+                 * Po pridaní všetkých
+                 * fotografií prepočítame
+                 * prototyp.
+                 */
+                await rebuildPrototype(
+                    meterTypeId
+                );
+
+
+                setStatus(
+                    `Pridaných fotografií: ${processed}`
+                );
+
+
+                setClipProgress(
+                    `CLIP: hotovo – ${processed} fotografií`
+                );
+
+
+                await refreshUI();
+
+
+            } catch (error) {
+
+                console.error(
+                    error
+                );
+
+
+                setStatus(
+                    "CLIP / uloženie fotografie zlyhalo: " +
+                    error.message,
+                    true
+                );
+            }
+        };
+
+
+    input.click();
+}
+
+
+/* =========================================================
+   PROTOTYP
+========================================================= */
+
+async function rebuildPrototype(
+    meterTypeId
+) {
+
+    const embeddings =
+        await getAllByIndex(
+            "embeddings",
+            "meterTypeId",
+            meterTypeId
+        );
+
+
+    if (
+        !embeddings.length
+    ) {
+
+        await deleteRecord(
+            "prototypes",
+            meterTypeId
+        );
+
+        return;
+    }
+
+
+    const vectors =
+        embeddings.map(
+            item =>
+                item.vector
+        );
+
+
+    const vector =
+        averageVectors(
+            vectors
+        );
+
+
+    const prototype = {
+
+        meterTypeId,
+
+        vector,
+
+        count:
+            embeddings.length,
+
+        updated:
+            new Date().toISOString(),
+
+        model:
+            EMBEDDING_MODEL
+    };
+
+
+    await put(
+        "prototypes",
+        prototype
+    );
+}
+
+
+/* =========================================================
+   DELETE FOTO
+========================================================= */
+
+async function deletePhoto(
+    photoId,
+    meterTypeId
+) {
+
+    if (
+        !confirm(
+            "Naozaj chceš vymazať túto fotografiu?"
+        )
+    ) {
+        return;
+    }
+
+
+    try {
+
+        const embedding =
+            await getByIndex(
+                "embeddings",
+                "photoId",
+                photoId
+            );
+
+
+        if (
+            embedding
+        ) {
+
+            await deleteRecord(
+                "embeddings",
+                embedding.id
+            );
+        }
+
+
+        await deleteRecord(
+            "photos",
+            photoId
+        );
+
+
+        await rebuildPrototype(
+            meterTypeId
+        );
+
+
+        openPhotoIds.add(
+            meterTypeId
+        );
+
+
+        setStatus(
+            "Fotografia bola vymazaná."
+        );
+
+
+        await refreshUI();
+
+
+    } catch (error) {
+
+        console.error(error);
+
+
+        setStatus(
+            "Fotografiu sa nepodarilo vymazať.",
+            true
+        );
+    }
+}
+
+
+/* =========================================================
+   DELETE TYP
+========================================================= */
+
+async function deleteMeterType(
+    meterTypeId
+) {
+
+    const type =
+        await getById(
+            "meterTypes",
+            meterTypeId
+        );
+
+
+    if (!type) {
+        return;
+    }
+
+
+    if (
+        !confirm(
+            `Naozaj chceš vymazať "${type.name}" a všetky jeho fotografie?`
+        )
+    ) {
+        return;
+    }
+
+
+    try {
+
+        await deleteByIndex(
+            "photos",
+            "meterTypeId",
+            meterTypeId
+        );
+
+
+        await deleteByIndex(
+            "embeddings",
+            "meterTypeId",
+            meterTypeId
+        );
+
+
+        await deleteRecord(
+            "prototypes",
+            meterTypeId
+        );
+
+
+        await deleteRecord(
+            "meterTypes",
+            meterTypeId
+        );
+
+
+        openPhotoIds.delete(
+            meterTypeId
+        );
+
+
+        setStatus(
+            "Typ merača bol vymazaný."
+        );
+
+
+        await refreshUI();
+
+
+    } catch (error) {
+
+        console.error(error);
+
+
+        setStatus(
+            "Typ sa nepodarilo vymazať.",
+            true
+        );
+    }
+}
+
+
+/* =========================================================
+   FOTO ZOBRAZENIE
+========================================================= */
+
+async function renderPhotos(
+    meterTypeId
+) {
+
+    const container =
+        document.getElementById(
+            `photos-${meterTypeId}`
+        );
+
+
+    if (!container) {
+        return;
+    }
+
+
+    /*
+     * Staré URL.
+     */
+    for (
+        const [
+            key,
+            url
+        ]
+        of photoObjectURLs
+    ) {
+
+        if (
+            key.startsWith(
+                meterTypeId + ":"
+            )
+        ) {
+
+            URL.revokeObjectURL(
+                url
+            );
+
+            photoObjectURLs.delete(
+                key
+            );
+        }
+    }
+
+
+    const photos =
+        await getAllByIndex(
+            "photos",
+            "meterTypeId",
+            meterTypeId
+        );
+
+
+    container.innerHTML =
+        "";
+
+
+    if (
+        !photos.length
+    ) {
+
+        container.innerHTML =
+            "<p>Žiadne fotografie.</p>";
+
+        return;
+    }
+
+
+    const list =
+        document.createElement(
+            "div"
+        );
+
+
+    list.className =
+        "photo-list";
+
+
+    for (
+        const photo
+        of photos
+    ) {
+
+        const key =
+            `${meterTypeId}:${photo.id}`;
+
+
+        const url =
+            URL.createObjectURL(
+                photo.blob
+            );
+
+
+        photoObjectURLs.set(
+            key,
+            url
+        );
+
+
+        const item =
+            document.createElement(
+                "div"
+            );
+
+
+        item.className =
+            "photo-item";
+
+
+        item.innerHTML = `
+
+            <img
+                src="${url}"
+                alt=""
+            >
+
+            <div class="small">
+                ${escapeHTML(
+                    photo.fileName
+                )}
+            </div>
+
+            <button
+                onclick="
+                    deletePhoto(
+                        '${photo.id}',
+                        '${meterTypeId}'
+                    )
+                "
+            >
+                Vymazať
+            </button>
+        `;
+
+
+        list.appendChild(
+            item
+        );
+    }
+
+
+    container.appendChild(
+        list
+    );
+}
+
+
+/* =========================================================
+   UČENIE
+========================================================= */
+
+async function renderLearning() {
+
+    const container =
+        document.getElementById(
+            "meterTypesContainer"
+        );
+
+
+    const types =
+        await getAll(
+            "meterTypes"
+        );
+
+
+    const prototypes =
+        await getAll(
+            "prototypes"
+        );
+
+
+    const prototypeMap =
+        new Map(
+            prototypes.map(
+                item => [
+                    item.meterTypeId,
+                    item
+                ]
+            )
+        );
+
+
+    container.innerHTML =
+        "";
+
+
+    if (
+        !types.length
+    ) {
+
+        container.innerHTML =
+            "<p>Zatiaľ nie je vytvorený žiadny typ merača.</p>";
+
+        return;
+    }
+
+
+    for (
+        const type
+        of types
+    ) {
+
+        const photos =
+            await getAllByIndex(
+                "photos",
+                "meterTypeId",
+                type.id
+            );
+
+
+        const prototype =
+            prototypeMap.get(
+                type.id
+            );
+
+
+        const card =
+            document.createElement(
+                "div"
+            );
+
+
+        card.className =
+            "type-card";
+
+
+        const isOpen =
+            openPhotoIds.has(
+                type.id
+            );
+
+
+        card.innerHTML = `
+
+            <h3>
+                ${escapeHTML(
+                    type.name
+                )}
+            </h3>
+
+            <div class="small">
+                ID:
+                ${escapeHTML(
+                    type.id
+                )}
+            </div>
+
+            <div>
+                Fotografie:
+                <strong>
+                    ${photos.length}
+                </strong>
+            </div>
+
+            <div>
+                Embeddingy:
+                <strong>
+                    ${prototype
+                        ? prototype.count
+                        : 0}
+                </strong>
+            </div>
+
+            <div>
+                Model:
+                <span class="small">
+                    ${EMBEDDING_MODEL}
+                </span>
+            </div>
+
+            <div>
+
+                <button
+                    onclick="
+                        editMeterType(
+                            '${type.id}'
+                        )
+                    "
+                >
+                    Upraviť názov
+                </button>
+
+                <button
+                    onclick="
+                        addPhotos(
+                            '${type.id}'
+                        )
+                    "
+                >
+                    + Pridať fotografie
+                </button>
+
+                <button
+                    onclick="
+                        togglePhotos(
+                            '${type.id}'
+                        )
+                    "
+                >
+                    ${
+                        isOpen
+                            ? "Skryť fotografie"
+                            : "Zobraziť fotografie"
+                    }
+                </button>
+
+                <button
+                    class="danger"
+                    onclick="
+                        deleteMeterType(
+                            '${type.id}'
+                        )
+                    "
+                >
+                    Vymazať typ
+                </button>
+
+            </div>
+
+            <div
+                id="photos-${type.id}"
+                class="${
+                    isOpen
+                        ? ""
+                        : "hidden"
+                }"
+            ></div>
+        `;
+
+
+        container.appendChild(
+            card
+        );
+
+
+        if (
+            isOpen
+        ) {
+
+            await renderPhotos(
+                type.id
+            );
+        }
+    }
+}
+
+
+async function togglePhotos(
+    meterTypeId
+) {
+
+    if (
+        openPhotoIds.has(
+            meterTypeId
+        )
+    ) {
+
+        openPhotoIds.delete(
+            meterTypeId
+        );
+
+    } else {
+
+        openPhotoIds.add(
+            meterTypeId
+        );
+    }
+
+
+    await renderLearning();
+}
+
+
+/* =========================================================
+   POUŽITIE
+========================================================= */
+
+async function renderUsage() {
+
+    const container =
+        document.getElementById(
+            "usageContainer"
+        );
+
+
+    const types =
+        await getAll(
+            "meterTypes"
+        );
+
+
+    container.innerHTML =
+        "";
+
+
+    for (
+        const type
+        of types
+    ) {
+
+        const prototype =
+            await getById(
+                "prototypes",
+                type.id
+            );
+
+
+        const div =
+            document.createElement(
+                "div"
+            );
+
+
+        div.className =
+            "type-card";
+
+
+        div.innerHTML = `
+
+            <strong>
+                ${escapeHTML(
+                    type.name
+                )}
+            </strong>
+
+            <br>
+
+            CLIP vzoriek:
+            ${
+                prototype
+                    ? prototype.count
+                    : 0
+            }
+
+            <br>
+
+            ID:
+            <span class="small">
+                ${escapeHTML(
+                    type.id
+                )}
+            </span>
+        `;
+
+
+        container.appendChild(
+            div
+        );
+    }
+}
+
+
+/* =========================================================
+   PREPÍNANIE
+========================================================= */
+
+async function showLearning() {
+
+    document
+        .getElementById(
+            "learningSection"
+        )
+        .classList.remove(
+            "hidden"
+        );
+
+
+    document
+        .getElementById(
+            "usageSection"
+        )
+        .classList.add(
+            "hidden"
+        );
+
+
+    await renderLearning();
+}
+
+
+async function showUsage() {
+
+    document
+        .getElementById(
+            "learningSection"
+        )
+        .classList.add(
+            "hidden"
+        );
+
+
+    document
+        .getElementById(
+            "usageSection"
+        )
+        .classList.remove(
+            "hidden"
+        );
+
+
+    await renderUsage();
+}
+
+
+/* =========================================================
+   DB INFO
+========================================================= */
+
+async function updateDBInfo() {
+
+    const types =
+        await getAll(
+            "meterTypes"
+        );
+
+    const photos =
+        await getAll(
+            "photos"
+        );
+
+    const embeddings =
+        await getAll(
+            "embeddings"
+        );
+
+    const prototypes =
+        await getAll(
+            "prototypes"
+        );
+
+
+    document.getElementById(
+        "dbInfo"
+    ).innerHTML = `
+
+        Typy:
+        <strong>
+            ${types.length}
+        </strong>
+
+        <br>
+
+        Fotografie:
+        <strong>
+            ${photos.length}
+        </strong>
+
+        <br>
+
+        Embeddingy:
+        <strong>
+            ${embeddings.length}
+        </strong>
+
+        <br>
+
+        Prototypy:
+        <strong>
+            ${prototypes.length}
+        </strong>
+
+        <br>
+
+        CLIP rozmer:
+        <strong>
+            ${EMBEDDING_SIZE}
+        </strong>
+
+        <br>
+
+        Model:
+        <strong>
+            ${EMBEDDING_MODEL}
+        </strong>
+    `;
+}
+
+
+/* =========================================================
+   REFRESH
+========================================================= */
+
+async function refreshUI() {
+
+    await renderLearning();
+
+
+    const usageVisible =
+        !document
+            .getElementById(
+                "usageSection"
+            )
+            .classList.contains(
+                "hidden"
+            );
+
+
+    if (
+        usageVisible
+    ) {
+
+        await renderUsage();
+    }
+
+
+    await updateDBInfo();
+}
+
+
+/* =========================================================
+   CLEAR DATABASE
+========================================================= */
+
+async function clearDatabase(
+    ask = true,
+    refresh = true
+) {
+
+    if (
+        ask &&
+        !confirm(
+            "Naozaj chceš vymazať CELÚ databázu?"
+        )
+    ) {
+
+        return;
+    }
+
+
+    const stores = [
+
+        "meterTypes",
+        "photos",
+        "embeddings",
+        "prototypes",
+        "settings"
+
+    ];
+
+
+    await new Promise(
+        (resolve, reject) => {
+
+            const tx =
+                db.transaction(
+                    stores,
+                    "readwrite"
+                );
+
+
+            for (
+                const store
+                of stores
+            ) {
+
+                tx.objectStore(
+                    store
+                ).clear();
+            }
+
+
+            tx.oncomplete =
+                resolve;
+
+
+            tx.onerror =
+                () =>
+                    reject(
+                        tx.error
+                    );
+
+
+            tx.onabort =
+                () =>
+                    reject(
+                        tx.error ||
+                        new Error(
+                            "Vymazanie databázy zlyhalo."
+                        )
+                    );
+        }
+    );
+
+
+    openPhotoIds.clear();
+
+
+    for (
+        const url
+        of photoObjectURLs.values()
+    ) {
+
+        URL.revokeObjectURL(
+            url
+        );
+    }
+
+
+    photoObjectURLs.clear();
+
+
+    setStatus(
+        "Databáza bola vymazaná."
+    );
+
+
+    if (
+        refresh
+    ) {
+
+        await refreshUI();
+    }
+}
+
+
+/* =========================================================
+   FILE EXTENSION
+========================================================= */
+
+function getFileExtension(
+    fileName
+) {
+
+    if (
+        !fileName
+    ) {
+        return "jpg";
+    }
+
+
+    const parts =
+        fileName.split(".");
+
+
+    if (
+        parts.length < 2
+    ) {
+        return "jpg";
+    }
+
+
+    const ext =
+        parts
+            .pop()
+            .toLowerCase()
+            .replace(
+                /[^a-z0-9]/g,
+                ""
+            );
+
+
+    return ext || "jpg";
+}
+
+
+/* =========================================================
+   EXPORT
+========================================================= */
+
+async function exportBackup() {
+
+    try {
+
+        setStatus(
+            "Pripravujem ZIP..."
+        );
+
+
+        const types =
+            await getAll(
+                "meterTypes"
+            );
+
+        const photos =
+            await getAll(
+                "photos"
+            );
+
+        const embeddings =
+            await getAll(
+                "embeddings"
+            );
+
+        const prototypes =
+            await getAll(
+                "prototypes"
+            );
+
+
+        const zip =
+            new JSZip();
+
+
+        const photoManifest =
+            [];
+
+
+        for (
+            const photo
+            of photos
+        ) {
+
+            const extension =
+                getFileExtension(
+                    photo.fileName
+                );
+
+
+            const path =
+                `photos/${photo.id}.${extension}`;
+
+
+            zip.file(
+                path,
+                photo.blob
+            );
+
+
+            photoManifest.push({
+
+                id:
+                    photo.id,
+
+                meterTypeId:
+                    photo.meterTypeId,
+
+                fileName:
+                    photo.fileName,
+
+                created:
+                    photo.created,
+
+                path
+            });
+        }
+
+
+        const manifest = {
+
+            backupFormat:
+                BACKUP_FORMAT,
+
+            database:
+                DB_NAME,
+
+            databaseVersion:
+                DB_VERSION,
+
+            exported:
+                new Date().toISOString(),
+
+            embeddingModel:
+                EMBEDDING_MODEL,
+
+            embeddingSize:
+                EMBEDDING_SIZE,
+
+            counts: {
+
+                meterTypes:
+                    types.length,
+
+                photos:
+                    photos.length,
+
+                embeddings:
+                    embeddings.length,
+
+                prototypes:
+                    prototypes.length
+            }
+        };
+
+
+        zip.file(
+            "manifest.json",
+            JSON.stringify(
+                manifest,
+                null,
+                2
+            )
+        );
+
+
+        zip.file(
+            "meterTypes.json",
+            JSON.stringify(
+                types,
+                null,
+                2
+            )
+        );
+
+
+        zip.file(
+            "photos.json",
+            JSON.stringify(
+                photoManifest,
+                null,
+                2
+            )
+        );
+
+
+        zip.file(
+            "embeddings.json",
+            JSON.stringify(
+                embeddings,
+                null,
+                2
+            )
+        );
+
+
+        zip.file(
+            "prototypes.json",
+            JSON.stringify(
+                prototypes,
+                null,
+                2
+            )
+        );
+
+
+        const blob =
+            await zip.generateAsync({
+                type:
+                    "blob"
+            });
+
+
+        const url =
+            URL.createObjectURL(
+                blob
+            );
+
+
+        const a =
+            document.createElement(
+                "a"
+            );
+
+
+        a.href =
+            url;
+
+
+        a.download =
+            `merace-backup-${new Date()
+                .toISOString()
+                .slice(0, 10)}.zip`;
+
+
+        document.body.appendChild(
+            a
+        );
+
+
+        a.click();
+
+
+        a.remove();
+
+
+        setTimeout(
+            () =>
+                URL.revokeObjectURL(
+                    url
+                ),
+            1000
+        );
+
+
+        setStatus(
+            "ZIP záloha bola vytvorená."
+        );
+
+
+    } catch (error) {
+
+        console.error(error);
+
+
+        setStatus(
+            "Export zlyhal: " +
+            error.message,
+            true
+        );
+    }
+}
+
+
+/* =========================================================
+   JSZIP
+========================================================= */
+
+/*
+ * JSZip načítame dynamicky.
+ *
+ * Tým zostáva hlavný CLIP import
+ * oddelený od ZIP knižnice.
+ */
+
+let JSZip;
+
+
+async function loadJSZip() {
+
+    if (
+        JSZip
+    ) {
+        return JSZip;
+    }
+
+
+    const module =
+        await import(
+            "https://cdn.jsdelivr.net/npm/jszip@3.10.1/+esm"
+        );
+
+
+    JSZip =
+        module.default;
+
+
+    return JSZip;
+}
+
+
+/* =========================================================
+   IMPORT – ZÁKLADNÁ VALIDÁCIA
+========================================================= */
+
+function assert(
+    condition,
+    message
+) {
+
+    if (!condition) {
+
+        throw new Error(
+            message
+        );
+    }
+}
+
+
+function validateUniqueIds(
+    records,
+    field,
+    label
+) {
+
+    const ids =
+        new Set();
+
+
+    for (
+        const record
+        of records
+    ) {
+
+        const value =
+            record[field];
+
+
+        assert(
+            typeof value ===
+                "string" &&
+            value.length > 0,
+            `${label}: chýba ID.`
+        );
+
+
+        assert(
+            !ids.has(value),
+            `${label}: duplicitné ID ${value}.`
+        );
+
+
+        ids.add(
+            value
+        );
+    }
+}
+
+
+function validateVector(
+    vector,
+    label
+) {
+
+    assert(
+        Array.isArray(vector),
+        `${label}: embedding nie je pole.`
+    );
+
+
+    assert(
+        vector.length ===
+            EMBEDDING_SIZE,
+        `${label}: nesprávna veľkosť embeddingu.`
+    );
+
+
+    for (
+        const value
+        of vector
+    ) {
+
+        assert(
+            typeof value ===
+                "number" &&
+            Number.isFinite(
+                value
+            ),
+            `${label}: neplatná hodnota.`
+        );
+    }
+}
+
+
+/* =========================================================
+   VALIDÁCIA BACKUPU
+========================================================= */
+
+async function validateBackup(
+    zip
+) {
+
+    const manifestFile =
+        zip.file(
+            "manifest.json"
+        );
+
+
+    assert(
+        manifestFile,
+        "V ZIP chýba manifest.json."
+    );
+
+
+    const manifest =
+        JSON.parse(
+            await manifestFile.async(
+                "string"
+            )
+        );
+
+
+    assert(
+        manifest.backupFormat ===
+            BACKUP_FORMAT,
+        "Tento ZIP má starší alebo nepodporovaný formát."
+    );
+
+
+    assert(
+        manifest.embeddingModel ===
+            EMBEDDING_MODEL,
+        "Záloha používa iný CLIP model."
+    );
+
+
+    assert(
+        manifest.embeddingSize ===
+            EMBEDDING_SIZE,
+        "Záloha má inú veľkosť embeddingov."
+    );
+
+
+    const files = {
+
+        meterTypes:
+            zip.file(
+                "meterTypes.json"
+            ),
+
+        photos:
+            zip.file(
+                "photos.json"
+            ),
+
+        embeddings:
+            zip.file(
+                "embeddings.json"
+            ),
+
+        prototypes:
+            zip.file(
+                "prototypes.json"
+            )
+    };
+
+
+    for (
+        const [
+            name,
+            file
+        ]
+        of Object.entries(
+            files
+        )
+    ) {
+
+        assert(
+            file,
+            `V ZIP chýba ${name}.json.`
+        );
+    }
+
+
+    const types =
+        JSON.parse(
+            await files.meterTypes.async(
+                "string"
+            )
+        );
+
+
+    const photoManifest =
+        JSON.parse(
+            await files.photos.async(
+                "string"
+            )
+        );
+
+
+    const embeddings =
+        JSON.parse(
+            await files.embeddings.async(
+                "string"
+            )
+        );
+
+
+    const prototypes =
+        JSON.parse(
+            await files.prototypes.async(
+                "string"
+            )
+        );
+
+
+    assert(
+        Array.isArray(types),
+        "meterTypes.json nie je pole."
+    );
+
+
+    assert(
+        Array.isArray(photoManifest),
+        "photos.json nie je pole."
+    );
+
+
+    assert(
+        Array.isArray(embeddings),
+        "embeddings.json nie je pole."
+    );
+
+
+    assert(
+        Array.isArray(prototypes),
+        "prototypes.json nie je pole."
+    );
+
+
+    assert(
+        manifest.counts.meterTypes ===
+            types.length,
+        "Nesedí počet typov."
+    );
+
+
+    assert(
+        manifest.counts.photos ===
+            photoManifest.length,
+        "Nesedí počet fotografií."
+    );
+
+
+    assert(
+        manifest.counts.embeddings ===
+            embeddings.length,
+        "Nesedí počet embeddingov."
+    );
+
+
+    assert(
+        manifest.counts.prototypes ===
+            prototypes.length,
+        "Nesedí počet prototypov."
+    );
+
+
+    validateUniqueIds(
+        types,
+        "id",
+        "Typy"
+    );
+
+
+    validateUniqueIds(
+        photoManifest,
+        "id",
+        "Fotografie"
+    );
+
+
+    validateUniqueIds(
+        embeddings,
+        "id",
+        "Embeddingy"
+    );
+
+
+    const typeIds =
+        new Set(
+            types.map(
+                type =>
+                    type.id
+            )
+        );
+
+
+    const photoIds =
+        new Set(
+            photoManifest.map(
+                photo =>
+                    photo.id
+            )
+        );
+
+
+    const photoTypeMap =
+        new Map();
+
+
+    for (
+        const photo
+        of photoManifest
+    ) {
+
+        assert(
+            typeIds.has(
+                photo.meterTypeId
+            ),
+            `Fotografia ${photo.id} má neexistujúci typ.`
+        );
+
+
+        assert(
+            zip.file(
+                photo.path
+            ),
+            `V ZIP chýba ${photo.path}.`
+        );
+
+
+        photoTypeMap.set(
+            photo.id,
+            photo.meterTypeId
+        );
+    }
+
+
+    const embeddingPhotos =
+        new Set();
+
+
+    const countByType =
+        new Map();
+
+
+    for (
+        const embedding
+        of embeddings
+    ) {
+
+        assert(
+            photoIds.has(
+                embedding.photoId
+            ),
+            `Embedding ${embedding.id} má neexistujúcu fotografiu.`
+        );
+
+
+        assert(
+            typeIds.has(
+                embedding.meterTypeId
+            ),
+            `Embedding ${embedding.id} má neexistujúci typ.`
+        );
+
+
+        assert(
+            photoTypeMap.get(
+                embedding.photoId
+            ) ===
+                embedding.meterTypeId,
+            `Embedding ${embedding.id} nemá rovnaký typ ako fotografia.`
+        );
+
+
+        assert(
+            !embeddingPhotos.has(
+                embedding.photoId
+            ),
+            `Fotografia ${embedding.photoId} má viac embeddingov.`
+        );
+
+
+        embeddingPhotos.add(
+            embedding.photoId
+        );
+
+
+        validateVector(
+            embedding.vector,
+            `Embedding ${embedding.id}`
+        );
+
+
+        countByType.set(
+            embedding.meterTypeId,
+            (
+                countByType.get(
+                    embedding.meterTypeId
+                ) || 0
+            ) + 1
+        );
+    }
+
+
+    assert(
+        embeddingPhotos.size ===
+            photoIds.size,
+        "Niektorá fotografia nemá embedding."
+    );
+
+
+    const prototypeTypes =
+        new Set();
+
+
+    for (
+        const prototype
+        of prototypes
+    ) {
+
+        assert(
+            typeIds.has(
+                prototype.meterTypeId
+            ),
+            "Prototyp má neexistujúci typ."
+        );
+
+
+        assert(
+            !prototypeTypes.has(
+                prototype.meterTypeId
+            ),
+            "Typ má viac prototypov."
+        );
+
+
+        prototypeTypes.add(
+            prototype.meterTypeId
+        );
+
+
+        validateVector(
+            prototype.vector,
+            `Prototyp ${prototype.meterTypeId}`
+        );
+
+
+        const expected =
+            countByType.get(
+                prototype.meterTypeId
+            ) || 0;
+
+
+        assert(
+            prototype.count ===
+                expected,
+            `Prototyp ${prototype.meterTypeId} má nesprávny počet vzoriek.`
+        );
+    }
+
+
+    return {
+
+        manifest,
+
+        types,
+
+        photoManifest,
+
+        embeddings,
+
+        prototypes
+    };
+}
+
+
+/* =========================================================
+   IMPORT
+========================================================= */
+
+async function importBackup(
+    file
+) {
+
+    if (!file) {
+        return;
+    }
+
+
+    try {
+
+        setStatus(
+            "Načítavam ZIP..."
+        );
+
+
+        const Zip =
+            await loadJSZip();
+
+
+        const zip =
+            await Zip.loadAsync(
+                file
+            );
+
+
+        setStatus(
+            "Kontrolujem ZIP..."
+        );
+
+
+        /*
+         * Kompletná kontrola ešte
+         * pred vymazaním DB.
+         */
+        const backup =
+            await validateBackup(
+                zip
+            );
+
+
+        if (
+            !confirm(
+                "Záloha je platná.\n\n" +
+                "Import nahradí aktuálnu databázu.\n\n" +
+                "Pokračovať?"
+            )
+        ) {
+
+            setStatus(
+                "Import zrušený."
+            );
+
+            return;
+        }
+
+
+        /*
+         * Najprv načítame všetky fotografie.
+         */
+        const photoBlobs =
+            [];
+
+
+        for (
+            const photo
+            of backup.photoManifest
+        ) {
+
+            const zipFile =
+                zip.file(
+                    photo.path
+                );
+
+
+            if (!zipFile) {
+
+                throw new Error(
+                    `Chýba ${photo.path}`
+                );
+            }
+
+
+            const blob =
+                await zipFile.async(
+                    "blob"
+                );
+
+
+            photoBlobs.push({
+
+                photo,
+
+                blob
+            });
+        }
+
+
+        setStatus(
+            "Vymazávam starú databázu..."
+        );
+
+
+        await clearDatabase(
+            false,
+            false
+        );
+
+
+        /*
+         * Typy.
+         */
+        for (
+            const type
+            of backup.types
+        ) {
+
+            await put(
+                "meterTypes",
+                type
+            );
+        }
+
+
+        /*
+         * Fotografie.
+         */
+        for (
+            const item
+            of photoBlobs
+        ) {
+
+            await put(
+                "photos",
+                {
+
+                    id:
+                        item.photo.id,
+
+                    meterTypeId:
+                        item.photo.meterTypeId,
+
+                    blob:
+                        item.blob,
+
+                    fileName:
+                        item.photo.fileName,
+
+                    created:
+                        item.photo.created
+                }
+            );
+        }
+
+
+        /*
+         * Embeddingy.
+         */
+        for (
+            const embedding
+            of backup.embeddings
+        ) {
+
+            await put(
+                "embeddings",
+                embedding
+            );
+        }
+
+
+        /*
+         * Prototypy.
+         */
+        for (
+            const prototype
+            of backup.prototypes
+        ) {
+
+            await put(
+                "prototypes",
+                prototype
+            );
+        }
+
+
+        await refreshUI();
+
+
+        setStatus(
+            "✓ Import CLIP zálohy bol úspešný."
+        );
+
+
+    } catch (error) {
+
+        console.error(
+            error
+        );
+
+
+        setStatus(
+            "Import zlyhal: " +
+            error.message,
+            true
+        );
+
+
+    } finally {
+
+        const input =
+            document.getElementById(
+                "importFile"
+            );
+
+
+        if (input) {
+            input.value = "";
+        }
+    }
+}
+
+
+/* =========================================================
+   ŠTART
+========================================================= */
+
+async function init() {
+
+    try {
+
+        /*
+         * IndexedDB.
+         */
+        await openDatabase();
+
+
+        /*
+         * UI môže nabehnúť
+         * okamžite – CLIP sa načíta
+         * až pri prvej fotografii.
+         */
+        setStatus(
+            "Databáza je pripravená. CLIP sa načíta pri prvej fotografii."
+        );
+
+
+        await refreshUI();
+
+
+    } catch (error) {
+
+        console.error(
+            error
+        );
+
+
+        setStatus(
+            "Inicializácia zlyhala: " +
+            error.message,
+            true
+        );
+    }
+}
+
+
+init();
+
+
+/*
+ * =========================================================
+ * JSZIP GLOBAL PRE EXPORT
+ * =========================================================
+ *
+ * Export používa JSZip.
+ * Načíta sa až pri prvom exporte.
+ */
+
+
+/*
+ * Preto nahradíme exportnú funkciu
+ * wrapperom.
+ */
+
+const originalExportBackup =
+    exportBackup;
+
+
+window.exportBackup =
+    async function() {
+
+        try {
+
+            await loadJSZip();
+
+            await originalExportBackup();
+
+        } catch (error) {
+
+            console.error(
+                error
+            );
+
+            setStatus(
+                "Export zlyhal: " +
+                error.message,
+                true
+            );
+        }
+    };
+
+
+/*
+ * Inline onclick potrebuje
+ * funkcie dostupné na window.
+ */
+window.showLearning =
+    showLearning;
+
+window.showUsage =
+    showUsage;
+
+window.addMeterType =
+    addMeterType;
+
+window.editMeterType =
+    editMeterType;
+
+window.addPhotos =
+    addPhotos;
+
+window.togglePhotos =
+    togglePhotos;
+
+window.deletePhoto =
+    deletePhoto;
+
+window.deleteMeterType =
+    deleteMeterType;
+
+window.clearDatabase =
+    clearDatabase;
+
+window.importBackup =
+    importBackup;
+
+</script>
+
+</body>
+</html>
