@@ -3,157 +3,187 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Merace – test databázy</title>
+<title>Merače – test databázy</title>
 
 <style>
-body {
-    font-family: Arial, sans-serif;
-    margin: 0;
-    padding: 15px;
-    background: #f2f2f2;
-}
+    body {
+        font-family: Arial, sans-serif;
+        margin: 0;
+        background: #f2f2f2;
+        color: #222;
+    }
 
-h1 {
-    margin-top: 0;
-}
+    header {
+        background: #222;
+        color: white;
+        padding: 15px;
+        text-align: center;
+    }
 
-button {
-    padding: 9px 13px;
-    margin: 3px;
-    cursor: pointer;
-}
+    main {
+        max-width: 900px;
+        margin: auto;
+        padding: 15px;
+    }
 
-input {
-    padding: 8px;
-    margin: 3px;
-}
+    section {
+        background: white;
+        padding: 15px;
+        margin-bottom: 15px;
+        border-radius: 10px;
+    }
 
-.section {
-    background: white;
-    padding: 15px;
-    margin-bottom: 15px;
-    border-radius: 10px;
-}
+    button {
+        padding: 10px 14px;
+        margin: 4px;
+        border: 0;
+        border-radius: 7px;
+        cursor: pointer;
+    }
 
-.type-card {
-    border: 1px solid #ccc;
-    padding: 12px;
-    margin: 10px 0;
-    border-radius: 8px;
-    background: #fafafa;
-}
+    .primary {
+        background: #1976d2;
+        color: white;
+    }
 
-.photo-list {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 10px;
-    margin-top: 10px;
-}
+    .danger {
+        background: #d32f2f;
+        color: white;
+    }
 
-.photo-item {
-    width: 130px;
-    border: 1px solid #ccc;
-    padding: 5px;
-    border-radius: 6px;
-    background: white;
-}
+    .secondary {
+        background: #ddd;
+    }
 
-.photo-item img {
-    width: 100%;
-    height: 100px;
-    object-fit: cover;
-}
+    input, select {
+        padding: 9px;
+        margin: 4px;
+        max-width: 100%;
+    }
 
-.small {
-    font-size: 12px;
-    color: #666;
-}
+    .meter {
+        border: 1px solid #ccc;
+        border-radius: 8px;
+        padding: 10px;
+        margin-top: 10px;
+    }
 
-.status {
-    padding: 10px;
-    background: #e8f0ff;
-    border-radius: 6px;
-    margin-bottom: 10px;
-}
+    .photos {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+    }
 
-.danger {
-    background: #ffe5e5;
-}
+    .photo {
+        width: 120px;
+        border: 1px solid #ccc;
+        border-radius: 7px;
+        padding: 5px;
+    }
 
-.hidden {
-    display: none;
-}
+    .photo img {
+        width: 100%;
+        height: 90px;
+        object-fit: cover;
+        border-radius: 5px;
+    }
+
+    #status {
+        background: #fff8c4;
+        padding: 10px;
+        border-radius: 7px;
+        margin-bottom: 15px;
+    }
+
+    pre {
+        white-space: pre-wrap;
+        word-break: break-word;
+        background: #eee;
+        padding: 10px;
+        border-radius: 7px;
+    }
 </style>
-
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 </head>
 
 <body>
 
-<h1>Merace – test databázy</h1>
+<header>
+    <h2>🔧 Merače – databázový test</h2>
+</header>
 
-<div id="status" class="status">
-    Inicializácia databázy...
-</div>
+<main>
 
-<div class="section">
-    <button onclick="showLearning()">UČENIE</button>
-    <button onclick="showUsage()">POUŽITIE</button>
-    <button onclick="exportBackup()">Export ZIP</button>
-    <button onclick="document.getElementById('importFile').click()">Import ZIP</button>
-    <input
-        type="file"
-        id="importFile"
-        accept=".zip"
-        class="hidden"
-        onchange="importBackup(this.files[0])"
-    >
-</div>
+<div id="status">Pripravené.</div>
 
-<!-- UČENIE -->
-<div id="learningSection" class="section">
+<section>
+    <h2>Úroveň</h2>
 
-    <h2>UČENIE</h2>
-
-    <button onclick="addMeterType()">
-        + Nový typ merača
+    <button class="primary" onclick="showLearning()">
+        🔧 UČENIE
     </button>
 
-    <div id="meterTypesContainer"></div>
+    <button class="secondary" onclick="showUsage()">
+        📷 POUŽITIE
+    </button>
+</section>
 
-</div>
+<section id="learning">
+    <h2>🔧 Učenie</h2>
 
-<!-- POUŽITIE -->
-<div id="usageSection" class="section hidden">
+    <input id="newTypeName"
+           placeholder="Názov typu, napr. Kamstrup 603">
 
-    <h2>POUŽITIE</h2>
+    <button class="primary" onclick="createMeterType()">
+        + Pridať typ merača
+    </button>
+
+    <div id="meterTypes"></div>
+</section>
+
+<section id="usage" style="display:none">
+    <h2>📷 Použitie</h2>
 
     <p>
-        Táto časť zatiaľ iba zobrazuje naučené typy meračov.
+        Táto časť zatiaľ iba zobrazí typy uložené v databáze.
+        Neskôr sem pridáme CLIP rozpoznávanie.
     </p>
 
-    <div id="usageContainer"></div>
+    <div id="usageTypes"></div>
+</section>
 
-</div>
+<section>
+    <h2>💾 Záloha databázy</h2>
 
-<div class="section">
-    <h3>Databáza</h3>
-
-    <div id="dbInfo"></div>
-
-    <button
-        class="danger"
-        onclick="clearDatabase(true)"
-    >
-        Vymazať celú databázu
+    <button class="primary" onclick="exportDatabase()">
+        ⬇️ Exportovať ZIP
     </button>
-</div>
 
+    <input type="file"
+           id="importFile"
+           accept=".zip">
+
+    <button class="primary" onclick="importDatabase()">
+        ⬆️ Importovať ZIP
+    </button>
+
+    <br><br>
+
+    <button class="danger" onclick="clearDatabase()">
+        🗑 Vymazať CELÚ databázu
+    </button>
+</section>
+
+<section>
+    <h2>🧪 Stav databázy</h2>
+    <pre id="dbInfo">Načítavam...</pre>
+</section>
+
+</main>
+
+<!-- JSZip – iba na vytváranie ZIP zálohy -->
+<script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
 
 <script>
-
-"use strict";
-
 
 /* =========================================================
    KONFIGURÁCIA
@@ -161,228 +191,50 @@ input {
 
 const DB_NAME = "MeraceTestDB";
 const DB_VERSION = 1;
-
-const BACKUP_FORMAT = 1;
-
-/*
- * Zatiaľ iba testovací embedding.
- * Neskôr ho nahradíme skutočným CLIP embeddingom.
- */
 const EMBEDDING_SIZE = 8;
 
-let db = null;
-
-/*
- * Uchováva, ktoré zoznamy fotografií sú práve otvorené.
- * Platí iba počas aktuálneho otvorenia stránky.
- */
-const openPhotoIds = new Set();
+let db;
 
 
 /* =========================================================
-   ZÁKLADNÉ POMOCNÉ FUNKCIE
+   INDEXEDDB
 ========================================================= */
 
-function id() {
-    return crypto.randomUUID();
-}
-
-
-function setStatus(text, error = false) {
-
-    const el = document.getElementById("status");
-
-    el.textContent = text;
-
-    el.className = error
-        ? "status danger"
-        : "status";
-}
-
-
-function escapeHTML(value) {
-
-    if (value === null || value === undefined) {
-        return "";
-    }
-
-    return String(value)
-        .replace(/&/g, "&amp;")
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;")
-        .replace(/"/g, "&quot;")
-        .replace(/'/g, "&#039;");
-}
-
-
-/* =========================================================
-   TESTOVACÍ EMBEDDING
-========================================================= */
-
-function createTestEmbedding() {
-
-    const vector = [];
-
-    for (let i = 0; i < EMBEDDING_SIZE; i++) {
-        vector.push(Math.random() * 2 - 1);
-    }
-
-    return normalize(vector);
-}
-
-
-/* =========================================================
-   VEKTORY
-========================================================= */
-
-function normalize(vector) {
-
-    let sum = 0;
-
-    for (const value of vector) {
-        sum += value * value;
-    }
-
-    const length = Math.sqrt(sum);
-
-    if (!length) {
-        return vector.map(() => 0);
-    }
-
-    return vector.map(value => value / length);
-}
-
-
-function averageVectors(vectors) {
-
-    if (!vectors.length) {
-        return null;
-    }
-
-    const result = new Array(vectors[0].length).fill(0);
-
-    for (const vector of vectors) {
-
-        for (let i = 0; i < vector.length; i++) {
-            result[i] += vector[i];
-        }
-    }
-
-    for (let i = 0; i < result.length; i++) {
-        result[i] /= vectors.length;
-    }
-
-    return normalize(result);
-}
-
-
-/* =========================================================
-   INDEXEDDB – OTVORENIE
-========================================================= */
-
-function openDatabase() {
-
+function openDB() {
     return new Promise((resolve, reject) => {
-
-        const request =
-            indexedDB.open(DB_NAME, DB_VERSION);
+        const request = indexedDB.open(DB_NAME, DB_VERSION);
 
         request.onupgradeneeded = event => {
-
             const database = event.target.result;
 
-            /*
-             * meterTypes
-             */
             if (!database.objectStoreNames.contains("meterTypes")) {
-
-                database.createObjectStore(
-                    "meterTypes",
-                    { keyPath: "id" }
-                );
+                database.createObjectStore("meterTypes", { keyPath: "id" });
             }
 
-
-            /*
-             * photos
-             */
             if (!database.objectStoreNames.contains("photos")) {
-
-                const store =
-                    database.createObjectStore(
-                        "photos",
-                        { keyPath: "id" }
-                    );
-
-                store.createIndex(
-                    "meterTypeId",
-                    "meterTypeId",
-                    { unique: false }
-                );
+                const store = database.createObjectStore("photos", { keyPath: "id" });
+                store.createIndex("meterTypeId", "meterTypeId", { unique: false });
             }
 
-
-            /*
-             * embeddings
-             */
             if (!database.objectStoreNames.contains("embeddings")) {
-
-                const store =
-                    database.createObjectStore(
-                        "embeddings",
-                        { keyPath: "id" }
-                    );
-
-                store.createIndex(
-                    "photoId",
-                    "photoId",
-                    { unique: true }
-                );
-
-                store.createIndex(
-                    "meterTypeId",
-                    "meterTypeId",
-                    { unique: false }
-                );
+                const store = database.createObjectStore("embeddings", { keyPath: "id" });
+                store.createIndex("photoId", "photoId", { unique: true });
+                store.createIndex("meterTypeId", "meterTypeId", { unique: false });
             }
 
-
-            /*
-             * prototypes
-             */
             if (!database.objectStoreNames.contains("prototypes")) {
-
-                database.createObjectStore(
-                    "prototypes",
-                    { keyPath: "meterTypeId" }
-                );
+                database.createObjectStore("prototypes", { keyPath: "meterTypeId" });
             }
 
-
-            /*
-             * settings
-             */
             if (!database.objectStoreNames.contains("settings")) {
-
-                database.createObjectStore(
-                    "settings",
-                    { keyPath: "id" }
-                );
+                database.createObjectStore("settings", { keyPath: "id" });
             }
         };
-
 
         request.onsuccess = event => {
-
             db = event.target.result;
-
-            db.onversionchange = () => {
-                db.close();
-            };
-
             resolve(db);
         };
-
 
         request.onerror = () => {
             reject(request.error);
@@ -392,473 +244,198 @@ function openDatabase() {
 
 
 /* =========================================================
-   INDEXEDDB – POMOCNÉ OPERÁCIE
+   POMOCNÉ FUNKCIE
+========================================================= */
+
+function id() {
+    return crypto.randomUUID();
+}
+
+function setStatus(text) {
+    document.getElementById("status").textContent = text;
+}
+
+function transaction(storeNames, mode = "readonly") {
+    return db.transaction(storeNames, mode);
+}
+
+
+/* =========================================================
+   GENEROVANIE TESTOVACIEHO EMBEDDINGU
+========================================================= */
+
+function createTestEmbedding() {
+    const vector = [];
+    for (let i = 0; i < EMBEDDING_SIZE; i++) {
+        vector.push(Math.random());
+    }
+    return normalize(vector);
+}
+
+function normalize(vector) {
+    let sum = 0;
+    for (const value of vector) {
+        sum += value * value;
+    }
+    const length = Math.sqrt(sum);
+    if (length === 0) return vector;
+    return vector.map(value => value / length);
+}
+
+function averageVectors(vectors) {
+    if (!vectors.length) return null;
+    const result = new Array(vectors[0].length).fill(0);
+    for (const vector of vectors) {
+        for (let i = 0; i < vector.length; i++) {
+            result[i] += vector[i];
+        }
+    }
+    for (let i = 0; i < result.length; i++) {
+        result[i] /= vectors.length;
+    }
+    return normalize(result);
+}
+
+
+/* =========================================================
+   PRÁCA S DATABÁZOU
 ========================================================= */
 
 function getAll(storeName) {
-
     return new Promise((resolve, reject) => {
+        const tx = db.transaction(storeName, "readonly");
+        const store = tx.objectStore(storeName);
+        const request = store.getAll();
 
-        const tx =
-            db.transaction(storeName, "readonly");
-
-        const request =
-            tx.objectStore(storeName).getAll();
-
-        request.onsuccess = () =>
-            resolve(request.result);
-
-        request.onerror = () =>
-            reject(request.error);
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error);
     });
 }
-
-
-function getAllByIndex(
-    storeName,
-    indexName,
-    value
-) {
-
-    return new Promise((resolve, reject) => {
-
-        const tx =
-            db.transaction(storeName, "readonly");
-
-        const index =
-            tx.objectStore(storeName)
-                .index(indexName);
-
-        const request =
-            index.getAll(value);
-
-        request.onsuccess = () =>
-            resolve(request.result);
-
-        request.onerror = () =>
-            reject(request.error);
-    });
-}
-
-
-function getByIndex(
-    storeName,
-    indexName,
-    value
-) {
-
-    return new Promise((resolve, reject) => {
-
-        const tx =
-            db.transaction(storeName, "readonly");
-
-        const index =
-            tx.objectStore(storeName)
-                .index(indexName);
-
-        const request =
-            index.get(value);
-
-        request.onsuccess = () =>
-            resolve(request.result);
-
-        request.onerror = () =>
-            reject(request.error);
-    });
-}
-
 
 function put(storeName, data) {
-
     return new Promise((resolve, reject) => {
-
-        const tx =
-            db.transaction(storeName, "readwrite");
-
+        const tx = db.transaction(storeName, "readwrite");
         tx.objectStore(storeName).put(data);
-
-        tx.oncomplete = resolve;
-
-        tx.onerror = () =>
-            reject(tx.error);
-
-        tx.onabort = () =>
-            reject(
-                tx.error ||
-                new Error("Transakcia bola prerušená.")
-            );
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => reject(tx.error);
     });
 }
-
 
 function deleteRecord(storeName, key) {
-
     return new Promise((resolve, reject) => {
-
-        const tx =
-            db.transaction(storeName, "readwrite");
-
+        const tx = db.transaction(storeName, "readwrite");
         tx.objectStore(storeName).delete(key);
-
-        tx.oncomplete = resolve;
-
-        tx.onerror = () =>
-            reject(tx.error);
-
-        tx.onabort = () =>
-            reject(
-                tx.error ||
-                new Error("Transakcia bola prerušená.")
-            );
-    });
-}
-
-
-function deleteByIndex(
-    storeName,
-    indexName,
-    value
-) {
-
-    return new Promise((resolve, reject) => {
-
-        const tx =
-            db.transaction(storeName, "readwrite");
-
-        const store =
-            tx.objectStore(storeName);
-
-        const index =
-            store.index(indexName);
-
-        const request =
-            index.openCursor(
-                IDBKeyRange.only(value)
-            );
-
-        request.onsuccess = event => {
-
-            const cursor = event.target.result;
-
-            if (cursor) {
-
-                cursor.delete();
-                cursor.continue();
-
-            }
-        };
-
-        tx.oncomplete = resolve;
-
-        tx.onerror = () =>
-            reject(tx.error);
-
-        tx.onabort = () =>
-            reject(
-                tx.error ||
-                new Error("Transakcia bola prerušená.")
-            );
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => reject(tx.error);
     });
 }
 
 
 /* =========================================================
-   ATOMICKÉ ULOŽENIE FOTO + EMBEDDING
+   VYTVORENIE TYPU MERAČA
 ========================================================= */
 
-/*
- * Dôležitá oprava:
- *
- * Fotografia a jej embedding sa uložia
- * v JEDNEJ IndexedDB transakcii.
- *
- * Ak zlyhá jedno, neuloží sa ani druhé.
- */
+async function createMeterType() {
+    const input = document.getElementById("newTypeName");
+    const name = input.value.trim();
 
-function putPhotoAndEmbedding(
-    photo,
-    embedding
-) {
-
-    return new Promise((resolve, reject) => {
-
-        const tx =
-            db.transaction(
-                ["photos", "embeddings"],
-                "readwrite"
-            );
-
-        tx.objectStore("photos")
-            .put(photo);
-
-        tx.objectStore("embeddings")
-            .put(embedding);
-
-        tx.oncomplete = resolve;
-
-        tx.onerror = () =>
-            reject(tx.error);
-
-        tx.onabort = () =>
-            reject(
-                tx.error ||
-                new Error(
-                    "Transakcia fotografie a embeddingu bola prerušená."
-                )
-            );
-    });
-}
-
-
-/* =========================================================
-   TYPY MERAČOV
-========================================================= */
-
-async function addMeterType() {
-
-    const name =
-        prompt("Názov typu merača:");
-
-    if (!name || !name.trim()) {
+    if (!name) {
+        alert("Zadaj názov typu merača.");
         return;
     }
 
     const meterType = {
-
         id: "meter-" + id(),
-
-        name: name.trim(),
-
+        name: name,
         manufacturer: "",
-
         model: "",
-
         created: new Date().toISOString(),
-
         referencePhotoId: null,
-
         ocrRegions: {
-
             serialNumber: null,
-
             nominalFlow: null,
-
             meterStatus: null
         }
     };
 
-
-    try {
-
-        await put(
-            "meterTypes",
-            meterType
-        );
-
-        setStatus(
-            "Typ merača bol vytvorený."
-        );
-
-        await refreshUI();
-
-    } catch (error) {
-
-        console.error(error);
-
-        setStatus(
-            "Nepodarilo sa vytvoriť typ merača.",
-            true
-        );
-    }
-}
-
-
-async function editMeterType(
-    meterTypeId
-) {
-
-    const meterType =
-        await getById(
-            "meterTypes",
-            meterTypeId
-        );
-
-    if (!meterType) {
-        return;
-    }
-
-    const newName =
-        prompt(
-            "Nový názov typu merača:",
-            meterType.name
-        );
-
-    if (
-        newName === null ||
-        !newName.trim()
-    ) {
-        return;
-    }
-
-    meterType.name =
-        newName.trim();
-
-    /*
-     * ID zostáva nezmenené.
-     */
-
-    await put(
-        "meterTypes",
-        meterType
-    );
-
-    setStatus(
-        "Názov typu merača bol upravený."
-    );
-
-    await refreshUI();
-}
-
-
-function getById(
-    storeName,
-    key
-) {
-
-    return new Promise((resolve, reject) => {
-
-        const tx =
-            db.transaction(
-                storeName,
-                "readonly"
-            );
-
-        const request =
-            tx.objectStore(storeName)
-                .get(key);
-
-        request.onsuccess = () =>
-            resolve(request.result);
-
-        request.onerror = () =>
-            reject(request.error);
-    });
+    await put("meterTypes", meterType);
+    input.value = "";
+    setStatus("Vytvorený typ: " + name);
+    refreshUI();
 }
 
 
 /* =========================================================
-   FOTOGRAFIE
+   ÚPRAVA NÁZVU
 ========================================================= */
 
-async function addPhotos(
-    meterTypeId
-) {
+async function editMeterType(meterTypeId) {
+    const types = await getAll("meterTypes");
+    const type = types.find(x => x.id === meterTypeId);
+    if (!type) return;
 
-    const input =
-        document.createElement("input");
+    const newName = prompt("Nový názov typu:", type.name);
+    if (newName === null) return;
 
+    const trimmed = newName.trim();
+    if (!trimmed) return;
+
+    type.name = trimmed;
+    await put("meterTypes", type);
+    setStatus("Názov bol upravený.");
+    refreshUI();
+}
+
+
+/* =========================================================
+   PRIDANIE FOTOGRAFIÍ
+========================================================= */
+
+async function addPhotos(meterTypeId) {
+    const input = document.createElement("input");
     input.type = "file";
     input.accept = "image/*";
     input.multiple = true;
 
     input.onchange = async () => {
+        const files = Array.from(input.files);
+        if (!files.length) return;
 
-        const files =
-            Array.from(input.files || []);
+        setStatus("Pridávam " + files.length + " fotografií...");
 
-        if (!files.length) {
-            return;
+        for (const file of files) {
+            const photoId = id();
+
+            const photo = {
+                id: photoId,
+                meterTypeId: meterTypeId,
+                blob: file,
+                fileName: file.name,
+                created: new Date().toISOString()
+            };
+
+            await put("photos", photo);
+
+            const embedding = {
+                id: "emb-" + photoId,
+                photoId: photoId,
+                meterTypeId: meterTypeId,
+                vector: createTestEmbedding(),
+                created: new Date().toISOString()
+            };
+
+            await put("embeddings", embedding);
         }
 
-        try {
-
-            for (const file of files) {
-
-                const photoId =
-                    "photo-" + id();
-
-                const photo = {
-
-                    id: photoId,
-
-                    meterTypeId,
-
-                    blob: file,
-
-                    fileName:
-                        file.name,
-
-                    created:
-                        new Date().toISOString()
-                };
-
-
-                /*
-                 * Zatiaľ testovací embedding.
-                 */
-                const embedding = {
-
-                    id:
-                        "embedding-" + id(),
-
-                    photoId,
-
-                    meterTypeId,
-
-                    vector:
-                        createTestEmbedding(),
-
-                    created:
-                        new Date().toISOString()
-                };
-
-
-                /*
-                 * FOTO + EMBEDDING
-                 * v jednej transakcii.
-                 */
-                await putPhotoAndEmbedding(
-                    photo,
-                    embedding
-                );
-
-                openPhotoIds.add(
-                    meterTypeId
-                );
-            }
-
-
-            await rebuildPrototype(
-                meterTypeId
-            );
-
-            setStatus(
-                `Pridaných fotografií: ${files.length}`
-            );
-
-            await refreshUI();
-
-        } catch (error) {
-
-            console.error(error);
-
-            if (
-                error &&
-                error.name === "QuotaExceededError"
-            ) {
-
-                setStatus(
-                    "Nedostatok miesta v úložisku.",
-                    true
-                );
-
-            } else {
-
-                setStatus(
-                    "Nepodarilo sa uložiť fotografie.",
-                    true
-                );
-            }
+        await rebuildPrototype(meterTypeId);
+        setStatus("Fotografie boli pridané.");
+        refreshUI();
+        
+        // Zabezpečí, že po pridaní ostanú fotky viditeľné
+        const photosDiv = document.getElementById("photos-" + meterTypeId);
+        if (photosDiv) {
+            photosDiv.style.display = "block";
+            await showPhotos(meterTypeId);
         }
     };
 
@@ -867,537 +444,215 @@ async function addPhotos(
 
 
 /* =========================================================
-   PROTOTYP
+   PREPOČÍTANIE PROTOTYPU
 ========================================================= */
 
-async function rebuildPrototype(
-    meterTypeId
-) {
+async function rebuildPrototype(meterTypeId) {
+    const embeddings = await getAll("embeddings");
+    const vectors = embeddings
+        .filter(x => x.meterTypeId === meterTypeId)
+        .map(x => x.vector);
 
-    const embeddings =
-        await getAllByIndex(
-            "embeddings",
-            "meterTypeId",
-            meterTypeId
-        );
-
-    if (!embeddings.length) {
-
-        await deleteRecord(
-            "prototypes",
-            meterTypeId
-        );
-
+    if (!vectors.length) {
+        await deleteRecord("prototypes", meterTypeId);
         return;
     }
 
-
-    const vectors =
-        embeddings.map(
-            item => item.vector
-        );
-
-
-    const prototypeVector =
-        averageVectors(vectors);
-
-
-    const prototype = {
-
-        meterTypeId,
-
-        vector:
-            prototypeVector,
-
-        count:
-            embeddings.length,
-
-        updated:
-            new Date().toISOString()
-    };
-
-
-    await put(
-        "prototypes",
-        prototype
-    );
+    const prototype = averageVectors(vectors);
+    await put("prototypes", {
+        meterTypeId: meterTypeId,
+        vector: prototype,
+        count: vectors.length,
+        updated: new Date().toISOString()
+    });
 }
 
 
 /* =========================================================
-   MAZANIE FOTOGRAFIE
+   ZOBRAZENIE FOTOGRAFIÍ (Opravený Memory Leak)
 ========================================================= */
 
-async function deletePhoto(
-    photoId,
-    meterTypeId
-) {
+async function showPhotos(meterTypeId) {
+    const container = document.getElementById("photos-" + meterTypeId);
+    if (!container) return;
 
-    const answer =
-        confirm(
-            "Naozaj chceš vymazať túto fotografiu?"
-        );
-
-    if (!answer) {
-        return;
-    }
-
-    try {
-
-        const embedding =
-            await getByIndex(
-                "embeddings",
-                "photoId",
-                photoId
-            );
-
-        /*
-         * Najprv embedding.
-         */
-        if (embedding) {
-
-            await deleteRecord(
-                "embeddings",
-                embedding.id
-            );
+    // ODSTRÁNENIE MEMORY LEAKU: Uvoľnenie starých Blob URL z pamäte
+    const oldImgs = container.querySelectorAll("img");
+    oldImgs.forEach(img => {
+        if (img.src.startsWith("blob:")) {
+            URL.revokeObjectURL(img.src);
         }
+    });
 
+    container.innerHTML = "";
 
-        /*
-         * Potom fotografia.
-         */
-        await deleteRecord(
-            "photos",
-            photoId
-        );
+    const photos = await getAll("photos");
+    const filtered = photos.filter(x => x.meterTypeId === meterTypeId);
 
-
-        /*
-         * Prototyp musí byť prepočítaný.
-         */
-        await rebuildPrototype(
-            meterTypeId
-        );
-
-
-        openPhotoIds.add(
-            meterTypeId
-        );
-
-
-        setStatus(
-            "Fotografia bola vymazaná."
-        );
-
-        await refreshUI();
-
-    } catch (error) {
-
-        console.error(error);
-
-        setStatus(
-            "Nepodarilo sa vymazať fotografiu.",
-            true
-        );
+    if (!filtered.length) {
+        container.textContent = "Žiadne fotografie.";
+        return;
     }
+
+    const wrapper = document.createElement("div");
+    wrapper.className = "photos";
+
+    for (const photo of filtered) {
+        const div = document.createElement("div");
+        div.className = "photo";
+
+        const img = document.createElement("img");
+        img.src = URL.createObjectURL(photo.blob);
+
+        const text = document.createElement("div");
+        text.textContent = photo.fileName;
+
+        const button = document.createElement("button");
+        button.className = "danger";
+        button.textContent = "🗑";
+        button.onclick = () => deletePhoto(photo.id, meterTypeId);
+
+        div.appendChild(img);
+        div.appendChild(text);
+        div.appendChild(button);
+
+        wrapper.appendChild(div);
+    }
+
+    container.appendChild(wrapper);
 }
 
 
 /* =========================================================
-   MAZANIE TYPU MERAČA
+   VYMAZANIE FOTOGRAFIE
 ========================================================= */
 
-async function deleteMeterType(
-    meterTypeId
-) {
+async function deletePhoto(photoId, meterTypeId) {
+    const answer = confirm(
+        "Naozaj chceš vymazať túto fotografiu?\n\n" +
+        "Vymaže sa aj jej embedding a prototype sa prepočíta."
+    );
 
-    const meterType =
-        await getById(
-            "meterTypes",
-            meterTypeId
-        );
+    if (!answer) return;
 
-    if (!meterType) {
-        return;
+    const embeddings = await getAll("embeddings");
+    const embedding = embeddings.find(x => x.photoId === photoId);
+
+    if (embedding) {
+        await deleteRecord("embeddings", embedding.id);
     }
 
-    const answer =
-        confirm(
-            `Naozaj chceš vymazať typ "${meterType.name}" a všetky jeho fotografie?`
-        );
+    await deleteRecord("photos", photoId);
+    await rebuildPrototype(meterTypeId);
 
-    if (!answer) {
-        return;
-    }
-
-    try {
-
-        /*
-         * Vymaž všetky fotografie typu.
-         */
-        await deleteByIndex(
-            "photos",
-            "meterTypeId",
-            meterTypeId
-        );
-
-
-        /*
-         * Vymaž všetky embeddingy typu.
-         */
-        await deleteByIndex(
-            "embeddings",
-            "meterTypeId",
-            meterTypeId
-        );
-
-
-        /*
-         * Vymaž prototyp.
-         */
-        await deleteRecord(
-            "prototypes",
-            meterTypeId
-        );
-
-
-        /*
-         * Vymaž samotný typ.
-         */
-        await deleteRecord(
-            "meterTypes",
-            meterTypeId
-        );
-
-
-        openPhotoIds.delete(
-            meterTypeId
-        );
-
-
-        setStatus(
-            "Typ merača bol vymazaný."
-        );
-
-        await refreshUI();
-
-    } catch (error) {
-
-        console.error(error);
-
-        setStatus(
-            "Nepodarilo sa vymazať typ merača.",
-            true
-        );
+    setStatus("Fotografia bola odstránená.");
+    
+    // Obnovíme UI a zachováme otvorený zoznam fotografií
+    await refreshUI();
+    const photosDiv = document.getElementById("photos-" + meterTypeId);
+    if (photosDiv) {
+        photosDiv.style.display = "block";
+        await showPhotos(meterTypeId);
     }
 }
 
 
 /* =========================================================
-   ZOBRAZENIE UČENIA
+   VYMAZANIE TYPU
+========================================================= */
+
+async function deleteMeterType(meterTypeId) {
+    const types = await getAll("meterTypes");
+    const type = types.find(x => x.id === meterTypeId);
+    if (!type) return;
+
+    const answer = confirm(
+        "POZOR!\n\n" +
+        "Vymazaním typu \"" + type.name + "\" sa odstránia:\n\n" +
+        "• všetky fotografie\n" +
+        "• embeddingy\n" +
+        "• prototype\n" +
+        "• OCR nastavenia\n\n" +
+        "Naozaj pokračovať?"
+    );
+
+    if (!answer) return;
+
+    const photos = await getAll("photos");
+    for (const photo of photos) {
+        if (photo.meterTypeId === meterTypeId) {
+            await deleteRecord("photos", photo.id);
+        }
+    }
+
+    const embeddings = await getAll("embeddings");
+    for (const embedding of embeddings) {
+        if (embedding.meterTypeId === meterTypeId) {
+            await deleteRecord("embeddings", embedding.id);
+        }
+    }
+
+    await deleteRecord("prototypes", meterTypeId);
+    await deleteRecord("meterTypes", meterTypeId);
+
+    setStatus("Typ merača bol vymazaný.");
+    refreshUI();
+}
+
+
+/* =========================================================
+   VYKRESLENIE UČENIA
 ========================================================= */
 
 async function renderLearning() {
-
-    const container =
-        document.getElementById(
-            "meterTypesContainer"
-        );
-
-    const types =
-        await getAll("meterTypes");
-
-    const prototypes =
-        await getAll("prototypes");
-
-
-    const prototypeMap =
-        new Map(
-            prototypes.map(
-                item => [
-                    item.meterTypeId,
-                    item
-                ]
-            )
-        );
-
-
+    const container = document.getElementById("meterTypes");
     container.innerHTML = "";
 
+    const types = await getAll("meterTypes");
+    const photos = await getAll("photos");
+    const prototypes = await getAll("prototypes");
 
     if (!types.length) {
-
-        container.innerHTML =
-            "<p>Zatiaľ nie je vytvorený žiadny typ merača.</p>";
-
+        container.innerHTML = "<p>Žiadne naučené typy.</p>";
         return;
     }
-
 
     for (const type of types) {
+        const count = photos.filter(x => x.meterTypeId === type.id).length;
+        const prototype = prototypes.find(x => x.meterTypeId === type.id);
 
-        const photos =
-            await getAllByIndex(
-                "photos",
-                "meterTypeId",
-                type.id
-            );
+        const div = document.createElement("div");
+        div.className = "meter";
 
+        div.innerHTML = `
+            <h3>${escapeHTML(type.name)}</h3>
+            <p>ID: <small>${type.id}</small></p>
+            <p>🖼 Naučené fotografie: <strong>${count}</strong></p>
+            <p>🧠 Prototype: ${prototype ? "✓ vytvorený" : "–"}</p>
 
-        const prototype =
-            prototypeMap.get(
-                type.id
-            );
+            <button class="primary" onclick="addPhotos('${type.id}')">+ Pridať fotografie</button>
+            <button class="secondary" onclick="editMeterType('${type.id}')">✏️ Upraviť názov</button>
+            <button class="secondary" onclick="togglePhotos('${type.id}')">🖼 Fotografie</button>
+            <button class="danger" onclick="deleteMeterType('${type.id}')">🗑 Vymazať typ</button>
 
-
-        const card =
-            document.createElement("div");
-
-        card.className =
-            "type-card";
-
-
-        const photosOpen =
-            openPhotoIds.has(
-                type.id
-            );
-
-
-        card.innerHTML = `
-
-            <h3>
-                ${escapeHTML(type.name)}
-            </h3>
-
-            <div class="small">
-                ID: ${escapeHTML(type.id)}
-            </div>
-
-            <div>
-                Fotografie:
-                <strong>${photos.length}</strong>
-            </div>
-
-            <div>
-                Prototyp:
-                <strong>
-                    ${
-                        prototype
-                            ? `${prototype.count} vzoriek`
-                            : "nevytvorený"
-                    }
-                </strong>
-            </div>
-
-            <div>
-
-                <button
-                    onclick="editMeterType('${type.id}')"
-                >
-                    Upraviť názov
-                </button>
-
-                <button
-                    onclick="addPhotos('${type.id}')"
-                >
-                    + Pridať fotografie
-                </button>
-
-                <button
-                    onclick="togglePhotos('${type.id}')"
-                >
-                    ${
-                        photosOpen
-                            ? "Skryť fotografie"
-                            : "Zobraziť fotografie"
-                    }
-                </button>
-
-                <button
-                    class="danger"
-                    onclick="deleteMeterType('${type.id}')"
-                >
-                    Vymazať typ
-                </button>
-
-            </div>
-
-            <div
-                id="photos-${type.id}"
-                class="${
-                    photosOpen
-                        ? ""
-                        : "hidden"
-                }"
-            ></div>
+            <div id="photos-${type.id}" style="display:none;margin-top:10px"></div>
         `;
 
-
-        container.appendChild(card);
-
-
-        if (photosOpen) {
-
-            await renderPhotos(
-                type.id
-            );
-        }
+        container.appendChild(div);
     }
 }
 
 
-/* =========================================================
-   ZOBRAZENIE FOTOGRAFIÍ
-========================================================= */
+async function togglePhotos(meterTypeId) {
+    const div = document.getElementById("photos-" + meterTypeId);
+    if (!div) return;
 
-const photoObjectURLs =
-    new Map();
-
-
-async function renderPhotos(
-    meterTypeId
-) {
-
-    const container =
-        document.getElementById(
-            `photos-${meterTypeId}`
-        );
-
-    if (!container) {
-        return;
-    }
-
-
-    /*
-     * Uvoľnenie starých Blob URL.
-     */
-    for (
-        const [
-            photoId,
-            url
-        ] of photoObjectURLs
-    ) {
-
-        if (
-            photoId.startsWith(
-                meterTypeId + ":"
-            )
-        ) {
-
-            URL.revokeObjectURL(url);
-
-            photoObjectURLs.delete(
-                photoId
-            );
-        }
-    }
-
-
-    const photos =
-        await getAllByIndex(
-            "photos",
-            "meterTypeId",
-            meterTypeId
-        );
-
-
-    container.innerHTML = "";
-
-
-    if (!photos.length) {
-
-        container.innerHTML =
-            "<p>Žiadne fotografie.</p>";
-
-        return;
-    }
-
-
-    const list =
-        document.createElement("div");
-
-    list.className =
-        "photo-list";
-
-
-    for (const photo of photos) {
-
-        const key =
-            `${meterTypeId}:${photo.id}`;
-
-        const url =
-            URL.createObjectURL(
-                photo.blob
-            );
-
-        photoObjectURLs.set(
-            key,
-            url
-        );
-
-
-        const item =
-            document.createElement("div");
-
-        item.className =
-            "photo-item";
-
-
-        item.innerHTML = `
-
-            <img
-                src="${url}"
-                alt=""
-            >
-
-            <div class="small">
-                ${escapeHTML(photo.fileName)}
-            </div>
-
-            <button
-                onclick="
-                    deletePhoto(
-                        '${photo.id}',
-                        '${meterTypeId}'
-                    )
-                "
-            >
-                Vymazať
-            </button>
-        `;
-
-
-        list.appendChild(item);
-    }
-
-
-    container.appendChild(list);
-}
-
-
-async function togglePhotos(
-    meterTypeId
-) {
-
-    if (
-        openPhotoIds.has(
-            meterTypeId
-        )
-    ) {
-
-        openPhotoIds.delete(
-            meterTypeId
-        );
-
+    if (div.style.display === "none") {
+        div.style.display = "block";
+        await showPhotos(meterTypeId);
     } else {
-
-        openPhotoIds.add(
-            meterTypeId
-        );
+        div.style.display = "none";
     }
-
-
-    await renderLearning();
 }
 
 
@@ -1406,1362 +661,263 @@ async function togglePhotos(
 ========================================================= */
 
 async function renderUsage() {
-
-    const container =
-        document.getElementById(
-            "usageContainer"
-        );
-
-    const types =
-        await getAll("meterTypes");
-
+    const container = document.getElementById("usageTypes");
     container.innerHTML = "";
 
+    const types = await getAll("meterTypes");
 
     if (!types.length) {
-
-        container.innerHTML =
-            "<p>Nie sú k dispozícii žiadne naučené typy.</p>";
-
+        container.textContent = "Zatiaľ nie sú naučené žiadne typy.";
         return;
     }
 
-
     for (const type of types) {
-
-        const prototype =
-            await getById(
-                "prototypes",
-                type.id
-            );
-
-
-        const div =
-            document.createElement("div");
-
-        div.className =
-            "type-card";
-
-
+        const div = document.createElement("div");
+        div.className = "meter";
         div.innerHTML = `
-
-            <strong>
-                ${escapeHTML(type.name)}
-            </strong>
-
-            <br>
-
-            Vzorky:
-            ${
-                prototype
-                    ? prototype.count
-                    : 0
-            }
-
-            <br>
-
-            ID:
-            <span class="small">
-                ${escapeHTML(type.id)}
-            </span>
+            <strong>${escapeHTML(type.name)}</strong><br>
+            ID: ${type.id}
         `;
-
-
         container.appendChild(div);
     }
 }
 
 
 /* =========================================================
-   PREPÍNANIE REŽIMOV
+   UI PREPÍNANIE
 ========================================================= */
 
-async function showLearning() {
-
-    document
-        .getElementById(
-            "learningSection"
-        )
-        .classList.remove("hidden");
-
-
-    document
-        .getElementById(
-            "usageSection"
-        )
-        .classList.add("hidden");
-
-
-    await renderLearning();
+function showLearning() {
+    document.getElementById("learning").style.display = "block";
+    document.getElementById("usage").style.display = "none";
 }
 
-
 async function showUsage() {
-
-    document
-        .getElementById(
-            "learningSection"
-        )
-        .classList.add("hidden");
-
-
-    document
-        .getElementById(
-            "usageSection"
-        )
-        .classList.remove("hidden");
-
-
+    document.getElementById("learning").style.display = "none";
+    document.getElementById("usage").style.display = "block";
     await renderUsage();
 }
 
 
 /* =========================================================
-   DB INFO
+   ESCAPE HTML
 ========================================================= */
 
-async function updateDBInfo() {
-
-    const types =
-        await getAll("meterTypes");
-
-    const photos =
-        await getAll("photos");
-
-    const embeddings =
-        await getAll("embeddings");
-
-    const prototypes =
-        await getAll("prototypes");
-
-
-    document.getElementById(
-        "dbInfo"
-    ).innerHTML = `
-
-        Typy meračov:
-        <strong>${types.length}</strong>
-        <br>
-
-        Fotografie:
-        <strong>${photos.length}</strong>
-        <br>
-
-        Embeddingy:
-        <strong>${embeddings.length}</strong>
-        <br>
-
-        Prototypy:
-        <strong>${prototypes.length}</strong>
-        <br>
-
-        Veľkosť testovacieho embeddingu:
-        <strong>${EMBEDDING_SIZE}</strong>
-    `;
+function escapeHTML(text) {
+    return text
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#039;");
 }
 
 
 /* =========================================================
-   REFRESH UI
+   INFORMÁCIE O DATABÁZE
+========================================================= */
+
+async function updateDBInfo() {
+    const types = await getAll("meterTypes");
+    const photos = await getAll("photos");
+    const embeddings = await getAll("embeddings");
+    const prototypes = await getAll("prototypes");
+
+    const info = {
+        meterTypes: types.length,
+        photos: photos.length,
+        embeddings: embeddings.length,
+        prototypes: prototypes.length,
+        database: DB_NAME,
+        version: DB_VERSION
+    };
+
+    document.getElementById("dbInfo").textContent = JSON.stringify(info, null, 2);
+}
+
+
+/* =========================================================
+   EXPORT
+========================================================= */
+
+async function exportDatabase() {
+    setStatus("Pripravujem ZIP zálohu...");
+
+    const types = await getAll("meterTypes");
+    const photos = await getAll("photos");
+    const embeddings = await getAll("embeddings");
+    const prototypes = await getAll("prototypes");
+
+    const zip = new JSZip();
+
+    const manifest = {
+        version: 1,
+        database: DB_NAME,
+        exported: new Date().toISOString(),
+        embeddingSize: EMBEDDING_SIZE,
+        counts: {
+            meterTypes: types.length,
+            photos: photos.length,
+            embeddings: embeddings.length,
+            prototypes: prototypes.length
+        }
+    };
+
+    zip.file("manifest.json", JSON.stringify(manifest, null, 2));
+    zip.file("meterTypes.json", JSON.stringify(types, null, 2));
+    zip.file("embeddings.json", JSON.stringify(embeddings, null, 2));
+    zip.file("prototypes.json", JSON.stringify(prototypes, null, 2));
+
+    const photoManifest = [];
+
+    for (const photo of photos) {
+        const extension = getExtension(photo.fileName);
+        const path = "photos/" + photo.id + extension;
+
+        zip.file(path, photo.blob);
+
+        photoManifest.push({
+            id: photo.id,
+            meterTypeId: photo.meterTypeId,
+            fileName: photo.fileName,
+            path: path,
+            created: photo.created
+        });
+    }
+
+    zip.file("photos.json", JSON.stringify(photoManifest, null, 2));
+
+    const blob = await zip.generateAsync({ type: "blob" });
+    const url = URL.createObjectURL(blob);
+
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "merace-backup-" + new Date().toISOString().slice(0, 10) + ".zip";
+    a.click();
+
+    URL.revokeObjectURL(url);
+    setStatus("ZIP záloha bola vytvorená.");
+}
+
+
+/* =========================================================
+   IMPORT
+========================================================= */
+
+async function importDatabase() {
+    const input = document.getElementById("importFile");
+    const file = input.files[0];
+
+    if (!file) {
+        alert("Najprv vyber ZIP súbor.");
+        return;
+    }
+
+    const answer = confirm("Import nahradí aktuálne údaje v databáze.\n\nPokračovať?");
+    if (!answer) return;
+
+    setStatus("Načítavam ZIP...");
+
+    try {
+        const zip = await JSZip.loadAsync(file);
+
+        const types = JSON.parse(await zip.file("meterTypes.json").async("string"));
+        const embeddings = JSON.parse(await zip.file("embeddings.json").async("string"));
+        const prototypes = JSON.parse(await zip.file("prototypes.json").async("string"));
+        const photoManifest = JSON.parse(await zip.file("photos.json").async("string"));
+
+        await clearDatabase(false);
+
+        for (const type of types) await put("meterTypes", type);
+        for (const embedding of embeddings) await put("embeddings", embedding);
+        for (const prototype of prototypes) await put("prototypes", prototype);
+
+        for (const item of photoManifest) {
+            const zipFile = zip.file(item.path);
+            if (!zipFile) continue;
+
+            const blob = await zipFile.async("blob");
+            await put("photos", {
+                id: item.id,
+                meterTypeId: item.meterTypeId,
+                blob: blob,
+                fileName: item.fileName,
+                created: item.created
+            });
+        }
+
+        setStatus("Import dokončený.");
+        input.value = ""; // Vyčistenie inputu pre opakovaný import
+        refreshUI();
+    } catch (err) {
+        console.error(err);
+        setStatus("Chyba pri importe ZIP súboru.");
+    }
+}
+
+
+/* =========================================================
+   VYMAZANIE CELEJ DATABÁZY
+========================================================= */
+
+async function clearDatabase(ask = true) {
+    if (ask) {
+        const answer = confirm("Naozaj vymazať CELÚ databázu?");
+        if (!answer) return;
+    }
+
+    const stores = ["meterTypes", "photos", "embeddings", "prototypes", "settings"];
+    const tx = db.transaction(stores, "readwrite");
+
+    for (const store of stores) {
+        tx.objectStore(store).clear();
+    }
+
+    await new Promise((resolve, reject) => {
+        tx.oncomplete = resolve;
+        tx.onerror = () => reject(tx.error);
+    });
+
+    setStatus("Databáza bola vymazaná.");
+    refreshUI();
+}
+
+
+/* =========================================================
+   PRÍPONA SÚBORU
+========================================================= */
+
+function getExtension(filename) {
+    const index = filename.lastIndexOf(".");
+    if (index === -1) return ".jpg";
+    return filename.slice(index).toLowerCase();
+}
+
+
+/* =========================================================
+   OBNOVA UI
 ========================================================= */
 
 async function refreshUI() {
-
+    if (!db) return;
     await renderLearning();
-
-    const usageVisible =
-        !document
-            .getElementById(
-                "usageSection"
-            )
-            .classList.contains(
-                "hidden"
-            );
-
-
-    if (usageVisible) {
-        await renderUsage();
-    }
-
-
+    await renderUsage();
     await updateDBInfo();
 }
 
 
 /* =========================================================
-   VYMAZANIE DATABÁZY
+   SPUSTENIE (Opravené asynchrónne volanie)
 ========================================================= */
 
-async function clearDatabase(
-    ask = true,
-    refresh = true
-) {
-
-    if (ask) {
-
-        const answer =
-            confirm(
-                "Naozaj chceš vymazať CELÚ databázu?"
-            );
-
-        if (!answer) {
-            return;
-        }
-    }
-
-
-    const stores = [
-        "meterTypes",
-        "photos",
-        "embeddings",
-        "prototypes",
-        "settings"
-    ];
-
-
-    await new Promise(
-        (resolve, reject) => {
-
-            const tx =
-                db.transaction(
-                    stores,
-                    "readwrite"
-                );
-
-
-            for (const storeName of stores) {
-
-                tx.objectStore(
-                    storeName
-                ).clear();
-            }
-
-
-            tx.oncomplete = resolve;
-
-            tx.onerror = () =>
-                reject(tx.error);
-
-            tx.onabort = () =>
-                reject(
-                    tx.error ||
-                    new Error(
-                        "Vymazanie databázy bolo prerušené."
-                    )
-                );
-        }
-    );
-
-
-    openPhotoIds.clear();
-
-
-    for (
-        const url of photoObjectURLs.values()
-    ) {
-
-        URL.revokeObjectURL(url);
-    }
-
-    photoObjectURLs.clear();
-
-
-    setStatus(
-        "Databáza bola vymazaná."
-    );
-
-
-    if (refresh) {
-        await refreshUI();
-    }
-}
-
-
-/* =========================================================
-   EXPORT ZIP
-========================================================= */
-
-function getFileExtension(
-    fileName
-) {
-
-    if (!fileName) {
-        return "jpg";
-    }
-
-    const parts =
-        fileName.split(".");
-
-    if (parts.length < 2) {
-        return "jpg";
-    }
-
-    const ext =
-        parts
-            .pop()
-            .toLowerCase()
-            .replace(
-                /[^a-z0-9]/g,
-                ""
-            );
-
-    return ext || "jpg";
-}
-
-
-function dateForFileName() {
-
-    return new Date()
-        .toISOString()
-        .slice(0, 10);
-}
-
-
-async function exportBackup() {
-
-    try {
-
-        setStatus(
-            "Pripravujem ZIP zálohu..."
-        );
-
-
-        const types =
-            await getAll(
-                "meterTypes"
-            );
-
-        const photos =
-            await getAll(
-                "photos"
-            );
-
-        const embeddings =
-            await getAll(
-                "embeddings"
-            );
-
-        const prototypes =
-            await getAll(
-                "prototypes"
-            );
-
-
-        const zip =
-            new JSZip();
-
-
-        /*
-         * Fotografie nemôžeme uložiť priamo
-         * do JSON – preto ich dávame samostatne.
-         */
-
-        const photoManifest = [];
-
-
-        for (const photo of photos) {
-
-            const extension =
-                getFileExtension(
-                    photo.fileName
-                );
-
-
-            const path =
-                `photos/${photo.id}.${extension}`;
-
-
-            zip.file(
-                path,
-                photo.blob
-            );
-
-
-            photoManifest.push({
-
-                id:
-                    photo.id,
-
-                meterTypeId:
-                    photo.meterTypeId,
-
-                fileName:
-                    photo.fileName,
-
-                created:
-                    photo.created,
-
-                path
-            });
-        }
-
-
-        /*
-         * Manifest.
-         */
-        const manifest = {
-
-            backupFormat:
-                BACKUP_FORMAT,
-
-            database:
-                DB_NAME,
-
-            databaseVersion:
-                DB_VERSION,
-
-            exported:
-                new Date().toISOString(),
-
-            embeddingModel:
-                "TEST-RANDOM-8",
-
-            embeddingSize:
-                EMBEDDING_SIZE,
-
-            counts: {
-
-                meterTypes:
-                    types.length,
-
-                photos:
-                    photos.length,
-
-                embeddings:
-                    embeddings.length,
-
-                prototypes:
-                    prototypes.length
-            }
-        };
-
-
-        zip.file(
-            "manifest.json",
-            JSON.stringify(
-                manifest,
-                null,
-                2
-            )
-        );
-
-
-        zip.file(
-            "meterTypes.json",
-            JSON.stringify(
-                types,
-                null,
-                2
-            )
-        );
-
-
-        zip.file(
-            "photos.json",
-            JSON.stringify(
-                photoManifest,
-                null,
-                2
-            )
-        );
-
-
-        zip.file(
-            "embeddings.json",
-            JSON.stringify(
-                embeddings,
-                null,
-                2
-            )
-        );
-
-
-        zip.file(
-            "prototypes.json",
-            JSON.stringify(
-                prototypes,
-                null,
-                2
-            )
-        );
-
-
-        const blob =
-            await zip.generateAsync({
-                type: "blob"
-            });
-
-
-        const url =
-            URL.createObjectURL(
-                blob
-            );
-
-
-        const a =
-            document.createElement(
-                "a"
-            );
-
-        a.href = url;
-
-        a.download =
-            `merace-backup-${dateForFileName()}.zip`;
-
-        document.body.appendChild(a);
-
-        a.click();
-
-        a.remove();
-
-
-        /*
-         * Necháme prehliadač chvíľu
-         * dokončiť download.
-         */
-        setTimeout(
-            () => URL.revokeObjectURL(url),
-            1000
-        );
-
-
-        setStatus(
-            "ZIP záloha bola vytvorená."
-        );
-
-    } catch (error) {
-
+openDB()
+    .then(() => {
+        refreshUI();
+    })
+    .catch(error => {
         console.error(error);
-
-        setStatus(
-            "Export ZIP zlyhal.",
-            true
-        );
-    }
-}
-
-
-/* =========================================================
-   IMPORT – POMOCNÉ VALIDÁCIE
-========================================================= */
-
-function assert(
-    condition,
-    message
-) {
-
-    if (!condition) {
-        throw new Error(message);
-    }
-}
-
-
-function validateUniqueIds(
-    records,
-    field,
-    label
-) {
-
-    const ids =
-        new Set();
-
-
-    for (const record of records) {
-
-        const value =
-            record[field];
-
-
-        assert(
-            typeof value === "string" &&
-            value.length > 0,
-            `${label}: chýba ID.`
-        );
-
-
-        assert(
-            !ids.has(value),
-            `${label}: duplicitné ID ${value}.`
-        );
-
-
-        ids.add(value);
-    }
-}
-
-
-function validateVector(
-    vector,
-    label,
-    expectedSize
-) {
-
-    assert(
-        Array.isArray(vector),
-        `${label}: embedding nie je pole.`
-    );
-
-
-    assert(
-        vector.length === expectedSize,
-        `${label}: nesprávna veľkosť embeddingu.`
-    );
-
-
-    for (const value of vector) {
-
-        assert(
-            typeof value === "number" &&
-            Number.isFinite(value),
-            `${label}: embedding obsahuje neplatné číslo.`
-        );
-    }
-}
-
-
-/* =========================================================
-   VALIDÁCIA ZÁLOHY
-========================================================= */
-
-async function validateBackup(
-    zip
-) {
-
-    /*
-     * Manifest
-     */
-    const manifestFile =
-        zip.file(
-            "manifest.json"
-        );
-
-    assert(
-        manifestFile,
-        "V ZIP chýba manifest.json."
-    );
-
-
-    const manifest =
-        JSON.parse(
-            await manifestFile.async(
-                "string"
-            )
-        );
-
-
-    assert(
-        manifest.backupFormat ===
-        BACKUP_FORMAT,
-        "Nepodporovaný formát zálohy."
-    );
-
-
-    assert(
-        manifest.embeddingSize ===
-        EMBEDDING_SIZE,
-        "Záloha má inú veľkosť embeddingov."
-    );
-
-
-    /*
-     * JSON súbory.
-     */
-    const meterTypesFile =
-        zip.file(
-            "meterTypes.json"
-        );
-
-    const photosFile =
-        zip.file(
-            "photos.json"
-        );
-
-    const embeddingsFile =
-        zip.file(
-            "embeddings.json"
-        );
-
-    const prototypesFile =
-        zip.file(
-            "prototypes.json"
-        );
-
-
-    assert(
-        meterTypesFile,
-        "V ZIP chýba meterTypes.json."
-    );
-
-    assert(
-        photosFile,
-        "V ZIP chýba photos.json."
-    );
-
-    assert(
-        embeddingsFile,
-        "V ZIP chýba embeddings.json."
-    );
-
-    assert(
-        prototypesFile,
-        "V ZIP chýba prototypes.json."
-    );
-
-
-    const types =
-        JSON.parse(
-            await meterTypesFile.async(
-                "string"
-            )
-        );
-
-    const photoManifest =
-        JSON.parse(
-            await photosFile.async(
-                "string"
-            )
-        );
-
-    const embeddings =
-        JSON.parse(
-            await embeddingsFile.async(
-                "string"
-            )
-        );
-
-    const prototypes =
-        JSON.parse(
-            await prototypesFile.async(
-                "string"
-            )
-        );
-
-
-    /*
-     * Musia byť polia.
-     */
-    assert(
-        Array.isArray(types),
-        "meterTypes.json nie je pole."
-    );
-
-    assert(
-        Array.isArray(photoManifest),
-        "photos.json nie je pole."
-    );
-
-    assert(
-        Array.isArray(embeddings),
-        "embeddings.json nie je pole."
-    );
-
-    assert(
-        Array.isArray(prototypes),
-        "prototypes.json nie je pole."
-    );
-
-
-    /*
-     * Kontrola počtov.
-     */
-    assert(
-        manifest.counts.meterTypes ===
-        types.length,
-        "Počet typov v manifeste nesúhlasí."
-    );
-
-    assert(
-        manifest.counts.photos ===
-        photoManifest.length,
-        "Počet fotografií v manifeste nesúhlasí."
-    );
-
-    assert(
-        manifest.counts.embeddings ===
-        embeddings.length,
-        "Počet embeddingov v manifeste nesúhlasí."
-    );
-
-    assert(
-        manifest.counts.prototypes ===
-        prototypes.length,
-        "Počet prototypov v manifeste nesúhlasí."
-    );
-
-
-    /*
-     * Unikátne ID.
-     */
-    validateUniqueIds(
-        types,
-        "id",
-        "Typy meračov"
-    );
-
-    validateUniqueIds(
-        photoManifest,
-        "id",
-        "Fotografie"
-    );
-
-    validateUniqueIds(
-        embeddings,
-        "id",
-        "Embeddingy"
-    );
-
-
-    /*
-     * Mapa typov.
-     */
-    const typeIds =
-        new Set(
-            types.map(
-                type => type.id
-            )
-        );
-
-
-    /*
-     * Mapa fotografií.
-     */
-    const photoIds =
-        new Set(
-            photoManifest.map(
-                photo => photo.id
-            )
-        );
-
-
-    /*
-     * Kontrola fotografií.
-     */
-    const photoIdToType =
-        new Map();
-
-
-    for (
-        const photo of photoManifest
-    ) {
-
-        assert(
-            typeIds.has(
-                photo.meterTypeId
-            ),
-            `Fotografia ${photo.id} odkazuje na neexistujúci typ merača.`
-        );
-
-
-        assert(
-            typeof photo.path ===
-            "string" &&
-            photo.path.length > 0,
-            `Fotografia ${photo.id} nemá cestu k súboru.`
-        );
-
-
-        const file =
-            zip.file(
-                photo.path
-            );
-
-
-        /*
-         * Dôležité:
-         * nesmie sa potichu preskočiť.
-         */
-        assert(
-            file,
-            `V ZIP chýba súbor fotografie: ${photo.path}`
-        );
-
-
-        photoIdToType.set(
-            photo.id,
-            photo.meterTypeId
-        );
-    }
-
-
-    /*
-     * Kontrola embeddingov.
-     */
-    const embeddingPhotoIds =
-        new Set();
-
-
-    const embeddingCountByType =
-        new Map();
-
-
-    for (
-        const embedding of embeddings
-    ) {
-
-        assert(
-            photoIds.has(
-                embedding.photoId
-            ),
-            `Embedding ${embedding.id} odkazuje na neexistujúcu fotografiu.`
-        );
-
-
-        assert(
-            typeIds.has(
-                embedding.meterTypeId
-            ),
-            `Embedding ${embedding.id} odkazuje na neexistujúci typ merača.`
-        );
-
-
-        assert(
-            photoIdToType.get(
-                embedding.photoId
-            ) ===
-            embedding.meterTypeId,
-            `Embedding ${embedding.id} má iný meterTypeId než fotografia.`
-        );
-
-
-        assert(
-            !embeddingPhotoIds.has(
-                embedding.photoId
-            ),
-            `Pre fotografiu ${embedding.photoId} existuje viac embeddingov.`
-        );
-
-
-        embeddingPhotoIds.add(
-            embedding.photoId
-        );
-
-
-        validateVector(
-            embedding.vector,
-            `Embedding ${embedding.id}`,
-            EMBEDDING_SIZE
-        );
-
-
-        const current =
-            embeddingCountByType.get(
-                embedding.meterTypeId
-            ) || 0;
-
-
-        embeddingCountByType.set(
-            embedding.meterTypeId,
-            current + 1
-        );
-    }
-
-
-    /*
-     * Každá fotografia musí mať embedding.
-     */
-    assert(
-        embeddingPhotoIds.size ===
-        photoIds.size,
-        "Niektorá fotografia nemá embedding."
-    );
-
-
-    /*
-     * Kontrola prototypov.
-     */
-    const prototypeTypeIds =
-        new Set();
-
-
-    for (
-        const prototype of prototypes
-    ) {
-
-        assert(
-            typeIds.has(
-                prototype.meterTypeId
-            ),
-            `Prototyp odkazuje na neexistujúci typ merača.`
-        );
-
-
-        assert(
-            !prototypeTypeIds.has(
-                prototype.meterTypeId
-            ),
-            `Typ ${prototype.meterTypeId} má viac prototypov.`
-        );
-
-
-        prototypeTypeIds.add(
-            prototype.meterTypeId
-        );
-
-
-        validateVector(
-            prototype.vector,
-            `Prototyp ${prototype.meterTypeId}`,
-            EMBEDDING_SIZE
-        );
-
-
-        const expectedCount =
-            embeddingCountByType.get(
-                prototype.meterTypeId
-            ) || 0;
-
-
-        assert(
-            prototype.count ===
-            expectedCount,
-            `Prototyp ${prototype.meterTypeId} má nesprávny počet vzoriek.`
-        );
-    }
-
-
-    return {
-        manifest,
-        types,
-        photoManifest,
-        embeddings,
-        prototypes
-    };
-}
-
-
-/* =========================================================
-   IMPORT ZIP
-========================================================= */
-
-async function importBackup(
-    file
-) {
-
-    if (!file) {
-        return;
-    }
-
-
-    try {
-
-        setStatus(
-            "Kontrolujem ZIP zálohu..."
-        );
-
-
-        const zip =
-            await JSZip.loadAsync(
-                file
-            );
-
-
-        /*
-         * NAJPRV úplná kontrola.
-         *
-         * Databáza sa ešte nemení.
-         */
-        const backup =
-            await validateBackup(
-                zip
-            );
-
-
-        const answer =
-            confirm(
-                "Záloha je v poriadku.\n\n" +
-                "Import nahradí aktuálne údaje v databáze.\n\n" +
-                "Pokračovať?"
-            );
-
-
-        if (!answer) {
-
-            setStatus(
-                "Import bol zrušený."
-            );
-
-            return;
-        }
-
-
-        /*
-         * Načítame binárne dáta fotografií
-         * ešte PRED vymazaním aktuálnej DB.
-         *
-         * Tým zabránime situácii,
-         * že ZIP bude chybný až po vymazaní DB.
-         */
-        const photoBlobs =
-            [];
-
-
-        for (
-            const photo
-            of backup.photoManifest
-        ) {
-
-            const zipFile =
-                zip.file(
-                    photo.path
-                );
-
-
-            /*
-             * Táto kontrola je už vykonaná,
-             * ale ponechávame ju aj tu
-             * ako poistku.
-             */
-            if (!zipFile) {
-
-                throw new Error(
-                    `Chýba súbor fotografie ${photo.path}.`
-                );
-            }
-
-
-            const blob =
-                await zipFile.async(
-                    "blob"
-                );
-
-
-            photoBlobs.push({
-
-                photo,
-
-                blob
-            });
-        }
-
-
-        setStatus(
-            "Obnovujem databázu..."
-        );
-
-
-        /*
-         * Vymažeme starú DB.
-         *
-         * Bez refreshu UI – nechceme
-         * počas importu zbytočne prekresľovať.
-         */
-        await clearDatabase(
-            false,
-            false
-        );
-
-
-        /*
-         * Obnova dát.
-         *
-         * Najprv typy.
-         */
-        for (
-            const type
-            of backup.types
-        ) {
-
-            await put(
-                "meterTypes",
-                type
-            );
-        }
-
-
-        /*
-         * Fotografie.
-         */
-        for (
-            const item
-            of photoBlobs
-        ) {
-
-            const photoRecord = {
-
-                id:
-                    item.photo.id,
-
-                meterTypeId:
-                    item.photo.meterTypeId,
-
-                blob:
-                    item.blob,
-
-                fileName:
-                    item.photo.fileName,
-
-                created:
-                    item.photo.created
-            };
-
-
-            await put(
-                "photos",
-                photoRecord
-            );
-        }
-
-
-        /*
-         * Embeddingy.
-         */
-        for (
-            const embedding
-            of backup.embeddings
-        ) {
-
-            await put(
-                "embeddings",
-                embedding
-            );
-        }
-
-
-        /*
-         * Prototypy.
-         */
-        for (
-            const prototype
-            of backup.prototypes
-        ) {
-
-            await put(
-                "prototypes",
-                prototype
-            );
-        }
-
-
-        /*
-         * Ešte raz kontrola počtov
-         * v obnovenej databáze.
-         */
-        const restoredTypes =
-            await getAll(
-                "meterTypes"
-            );
-
-        const restoredPhotos =
-            await getAll(
-                "photos"
-            );
-
-        const restoredEmbeddings =
-            await getAll(
-                "embeddings"
-            );
-
-        const restoredPrototypes =
-            await getAll(
-                "prototypes"
-            );
-
-
-        if (
-            restoredTypes.length !==
-            backup.manifest.counts.meterTypes
-        ) {
-            throw new Error(
-                "Po obnove nesedí počet typov meračov."
-            );
-        }
-
-
-        if (
-            restoredPhotos.length !==
-            backup.manifest.counts.photos
-        ) {
-            throw new Error(
-                "Po obnove nesedí počet fotografií."
-            );
-        }
-
-
-        if (
-            restoredEmbeddings.length !==
-            backup.manifest.counts.embeddings
-        ) {
-            throw new Error(
-                "Po obnove nesedí počet embeddingov."
-            );
-        }
-
-
-        if (
-            restoredPrototypes.length !==
-            backup.manifest.counts.prototypes
-        ) {
-            throw new Error(
-                "Po obnove nesedí počet prototypov."
-            );
-        }
-
-
-        setStatus(
-            "Import ZIP bol úspešne dokončený."
-        );
-
-
-        await refreshUI();
-
-
-    } catch (error) {
-
-        console.error(error);
-
-        setStatus(
-            "Import zlyhal: " +
-            error.message,
-            true
-        );
-
-    } finally {
-
-        /*
-         * Vyčistenie inputu,
-         * aby bolo možné vybrať rovnaký ZIP znova.
-         */
-        const input =
-            document.getElementById(
-                "importFile"
-            );
-
-        if (input) {
-            input.value = "";
-        }
-    }
-}
-
-
-/* =========================================================
-   ŠTART
-========================================================= */
-
-async function init() {
-
-    try {
-
-        await openDatabase();
-
-        setStatus(
-            "Databáza je pripravená."
-        );
-
-        await refreshUI();
-
-    } catch (error) {
-
-        console.error(error);
-
-        setStatus(
-            "Nepodarilo sa otvoriť databázu.",
-            true
-        );
-    }
-}
-
-
-init();
+        setStatus("Chyba databázy: " + error.message);
+    });
 
 </script>
 
