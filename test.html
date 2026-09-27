@@ -1,0 +1,1003 @@
+<!DOCTYPE html>
+<html lang="sk">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Merače – CLIP rozpoznávanie</title>
+<style>
+body{font-family:Arial,sans-serif;margin:0;background:#f2f2f2;color:#222}
+header{background:#222;color:#fff;padding:15px;text-align:center}
+main{max-width:900px;margin:auto;padding:15px}
+section{background:#fff;padding:15px;margin-bottom:15px;border-radius:10px}
+button{padding:10px 14px;margin:4px;border:0;border-radius:7px;cursor:pointer}
+.primary{background:#1976d2;color:#fff}.danger{background:#d32f2f;color:#fff}.secondary{background:#ddd}
+button:disabled{opacity:.5;cursor:not-allowed}
+input,select{padding:9px;margin:4px;max-width:100%}
+.meter{border:1px solid #ccc;border-radius:8px;padding:10px;margin-top:10px}
+.photos{display:flex;flex-wrap:wrap;gap:8px}.photo{width:120px;border:1px solid #ccc;border-radius:7px;padding:5px}
+.photo img{width:100%;height:90px;object-fit:cover;border-radius:5px}
+#status{background:#fff8c4;padding:10px;border-radius:7px;margin-bottom:15px}
+pre{white-space:pre-wrap;word-break:break-word;background:#eee;padding:10px;border-radius:7px}
+.result{padding:12px;background:#eef6ff;border-radius:8px;margin-top:10px}
+.score{font-size:1.15em}.warn{color:#b00;font-weight:bold}
+progress{width:100%;height:20px}
+#previewImg{max-width:100%;max-height:340px;border-radius:8px;border:2px solid #1976d2;cursor:pointer;
+    transition:transform .15s ease;user-select:none;-webkit-user-drag:none;touch-action:manipulation;
+    display:block;margin-top:6px}
+</style>
+</head>
+<body>
+<header><h2>🔧 Merače – CLIP test</h2></header>
+<main>
+<div id="status">Inicializácia...</div>
+
+<section>
+<h2>Úroveň</h2>
+<button class="primary" onclick="showLearning()">🔧 UČENIE</button>
+<button class="secondary" onclick="showUsage()">📷 POUŽITIE</button>
+</section>
+
+<section id="learning">
+<h2>🔧 Učenie</h2>
+<input id="newTypeName" placeholder="Názov typu, napr. Kamstrup 603">
+<button class="primary" onclick="createMeterType()">+ Pridať typ merača</button>
+<div id="meterTypes"></div>
+</section>
+
+<section id="usage" style="display:none">
+<h2>📷 Použitie</h2>
+<p>Odfotografuj alebo vyber fotografiu merača. Ťuknutím na náhľad ju otočíš o 90°.</p>
+
+<input type="file" id="cameraInput" accept="image/*" capture="environment" style="display:none">
+<input type="file" id="galleryInput" accept="image/*" style="display:none">
+
+<button class="primary" onclick="document.getElementById('cameraInput').click()">📷 Fotiť</button>
+<button class="secondary" onclick="document.getElementById('galleryInput').click()">🖼 Vybrať z galérie</button>
+
+<div id="previewWrap" style="display:none;margin-top:12px">
+    <p style="margin:4px 0">Náhľad (ťuknutím otočíš o 90°):</p>
+    <img id="previewImg" alt="Náhľad">
+    <p id="rotationInfo" style="font-size:.9em;color:#555"></p>
+    <button class="secondary" onclick="resetPreview()">↺ Zrušiť výber</button>
+</div>
+
+<button class="primary" id="recognizeBtn" onclick="runRecognition()" disabled>🔍 Rozpoznať typ</button>
+<div id="recognitionResult"></div>
+<hr>
+<div id="usageTypes"></div>
+</section>
+
+<section>
+<h2>💾 Záloha databázy</h2>
+<button class="primary" onclick="exportDatabase()">⬇️ Exportovať ZIP</button>
+<input type="file" id="importFile" accept=".zip">
+<button class="primary" onclick="importDatabase()">⬆️ Importovať ZIP</button>
+<br><br>
+<button class="danger" onclick="clearDatabase()">🗑 Vymazať CELÚ databázu</button>
+</section>
+
+<section>
+<h2>🧪 Stav</h2>
+<pre id="dbInfo">Načítavam...</pre>
+</section>
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+
+<script type="module">
+import {
+    AutoProcessor,
+    CLIPVisionModelWithProjection,
+    RawImage
+} from "https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.0.0";
+
+const DB_NAME="MeraceTestDB";
+const DB_VERSION=1;
+const EMBEDDING_SIZE=512;
+
+let db;
+let processor=null;
+let visionModel=null;
+let modelPromise=null;
+const openPhotoIds=new Set();
+
+/* =========================
+   POUŽITIE – stav náhľadu
+========================= */
+let currentImageBitmap = null;
+let currentRotation    = 0;
+let currentSourceFile  = null;
+
+/* =========================
+   UI
+========================= */
+window.setStatus=function(text){
+    document.getElementById("status").textContent=text;
+};
+
+function escapeHTML(text){
+    return String(text??"")
+        .replaceAll("&","&amp;").replaceAll("<","&lt;")
+        .replaceAll(">","&gt;").replaceAll('"',"&quot;")
+        .replaceAll("'","&#039;");
+}
+
+window.showLearning=function(){
+    document.getElementById("learning").style.display="block";
+    document.getElementById("usage").style.display="none";
+};
+window.showUsage=async function(){
+    resetPreview();
+    document.getElementById("learning").style.display="none";
+    document.getElementById("usage").style.display="block";
+    await renderUsage();
+};
+
+/* =========================
+   INDEXEDDB
+========================= */
+function openDB(){
+    return new Promise((resolve,reject)=>{
+        const request=indexedDB.open(DB_NAME,DB_VERSION);
+        request.onupgradeneeded=e=>{
+            const database=e.target.result;
+            if(!database.objectStoreNames.contains("meterTypes"))
+                database.createObjectStore("meterTypes",{keyPath:"id"});
+            if(!database.objectStoreNames.contains("photos")){
+                const s=database.createObjectStore("photos",{keyPath:"id"});
+                s.createIndex("meterTypeId","meterTypeId",{unique:false});
+            }
+            if(!database.objectStoreNames.contains("embeddings")){
+                const s=database.createObjectStore("embeddings",{keyPath:"id"});
+                s.createIndex("photoId","photoId",{unique:true});
+                s.createIndex("meterTypeId","meterTypeId",{unique:false});
+            }
+            if(!database.objectStoreNames.contains("prototypes"))
+                database.createObjectStore("prototypes",{keyPath:"meterTypeId"});
+            if(!database.objectStoreNames.contains("settings"))
+                database.createObjectStore("settings",{keyPath:"id"});
+        };
+        request.onsuccess=e=>{
+            db=e.target.result;
+            db.onversionchange=()=>db.close();
+            resolve(db);
+        };
+        request.onerror=()=>reject(request.error);
+    });
+}
+
+function id(){return crypto.randomUUID();}
+
+function getAll(storeName){
+    return new Promise((resolve,reject)=>{
+        const tx=db.transaction(storeName,"readonly");
+        const req=tx.objectStore(storeName).getAll();
+        req.onsuccess=()=>resolve(req.result);
+        req.onerror=()=>reject(req.error);
+    });
+}
+function getAllByIndex(storeName,indexName,value){
+    return new Promise((resolve,reject)=>{
+        const tx=db.transaction(storeName,"readonly");
+        const req=tx.objectStore(storeName).index(indexName).getAll(value);
+        req.onsuccess=()=>resolve(req.result);
+        req.onerror=()=>reject(req.error);
+    });
+}
+function put(storeName,data){
+    return new Promise((resolve,reject)=>{
+        const tx=db.transaction(storeName,"readwrite");
+        tx.objectStore(storeName).put(data);
+        tx.oncomplete=resolve;
+        tx.onerror=()=>reject(tx.error);
+        tx.onabort=()=>reject(tx.error||new Error("Transakcia zlyhala."));
+    });
+}
+function deleteRecord(storeName,key){
+    return new Promise((resolve,reject)=>{
+        const tx=db.transaction(storeName,"readwrite");
+        tx.objectStore(storeName).delete(key);
+        tx.oncomplete=resolve;
+        tx.onerror=()=>reject(tx.error);
+    });
+}
+function deleteByIndex(storeName,indexName,value){
+    return new Promise((resolve,reject)=>{
+        const tx=db.transaction(storeName,"readwrite");
+        const req=tx.objectStore(storeName).index(indexName).openCursor(IDBKeyRange.only(value));
+        req.onsuccess=e=>{
+            const cursor=e.target.result;
+            if(cursor){cursor.delete();cursor.continue();}
+        };
+        req.onerror=()=>reject(req.error);
+        tx.oncomplete=resolve;
+        tx.onerror=()=>reject(tx.error);
+    });
+}
+
+/* =========================
+   CLIP
+========================= */
+async function loadCLIP(){
+    if(modelPromise)return modelPromise;
+
+    modelPromise=(async()=>{
+        setStatus("Načítavam CLIP model… pri prvom spustení to môže chvíľu trvať.");
+
+        processor=await AutoProcessor.from_pretrained(
+            "Xenova/clip-vit-base-patch16"
+        );
+
+        visionModel=await CLIPVisionModelWithProjection.from_pretrained(
+            "Xenova/clip-vit-base-patch16"
+        );
+
+        setStatus("CLIP je pripravený.");
+        return true;
+    })().catch(err=>{
+        modelPromise=null;
+        processor=null;
+        visionModel=null;
+        throw err;
+    });
+
+    return modelPromise;
+}
+
+function normalize(vector){
+    let sum=0;
+    for(const v of vector)sum+=v*v;
+    const len=Math.sqrt(sum);
+    return len===0?vector:vector.map(v=>v/len);
+}
+
+async function getCLIPEmbedding(blob){
+    await loadCLIP();
+
+    const image=await RawImage.fromBlob(blob);
+    const inputs=await processor(image);
+    const output=await visionModel(inputs);
+
+    const embeds=output.image_embeds;
+    const vector=Array.from(embeds.data);
+
+    if(vector.length!==EMBEDDING_SIZE){
+        throw new Error(
+            `CLIP vrátil ${vector.length} hodnôt, očakával som ${EMBEDDING_SIZE}.`
+        );
+    }
+    return normalize(vector);
+}
+
+function cosineSimilarity(a,b){
+    if(!Array.isArray(a)||!Array.isArray(b)||a.length!==b.length)
+        throw new Error("Nezhodná veľkosť embeddingov.");
+
+    let dot=0,normA=0,normB=0;
+    for(let i=0;i<a.length;i++){
+        dot+=a[i]*b[i];
+        normA+=a[i]*a[i];
+        normB+=b[i]*b[i];
+    }
+    if(normA===0||normB===0)return 0;
+    return dot/(Math.sqrt(normA)*Math.sqrt(normB));
+}
+
+function averageVectors(vectors){
+    if(!vectors.length)return null;
+    const result=new Array(vectors[0].length).fill(0);
+    for(const v of vectors){
+        if(v.length!==result.length)throw new Error("Nekompatibilný embedding.");
+        for(let i=0;i<v.length;i++)result[i]+=v[i];
+    }
+    for(let i=0;i<result.length;i++)result[i]/=vectors.length;
+    return normalize(result);
+}
+
+/* =========================
+   TYPY
+========================= */
+window.createMeterType=async function(){
+    const input=document.getElementById("newTypeName");
+    const name=input.value.trim();
+    if(!name){alert("Zadaj názov typu merača.");return;}
+
+    const meterType={
+        id:"meter-"+id(),
+        name,
+        manufacturer:"",
+        model:"",
+        created:new Date().toISOString(),
+        referencePhotoId:null,
+        ocrRegions:{
+            serialNumber:null,
+            nominalFlow:null,
+            meterStatus:null
+        }
+    };
+
+    await put("meterTypes",meterType);
+    input.value="";
+    setStatus("Vytvorený typ: "+name);
+    await refreshUI();
+};
+
+window.editMeterType=async function(meterTypeId){
+    const types=await getAll("meterTypes");
+    const type=types.find(x=>x.id===meterTypeId);
+    if(!type)return;
+
+    const newName=prompt("Nový názov typu:",type.name);
+    if(newName===null)return;
+    const trimmed=newName.trim();
+    if(!trimmed)return;
+
+    type.name=trimmed;
+    await put("meterTypes",type);
+    setStatus("Názov bol upravený.");
+    await refreshUI();
+};
+
+/* =========================
+   FOTOGRAFIE + UČENIE
+========================= */
+window.addPhotos=async function(meterTypeId){
+    const input=document.createElement("input");
+    input.type="file";
+    input.accept="image/*";
+    input.multiple=true;
+
+    input.onchange=async()=>{
+        const files=Array.from(input.files||[]);
+        if(!files.length)return;
+
+        setStatus("Spracúvam "+files.length+" fotografií pomocou CLIP…");
+
+        let added=0,failed=0;
+
+        try{
+            await loadCLIP();
+
+            for(let n=0;n<files.length;n++){
+                const file=files[n];
+                setStatus(`CLIP: fotografia ${n+1}/${files.length}…`);
+
+                const photoId=id();
+                let photoSaved=false;
+
+                try{
+                    const embedding=await getCLIPEmbedding(file);
+
+                    await put("photos",{
+                        id:photoId,
+                        meterTypeId,
+                        blob:file,
+                        fileName:file.name,
+                        created:new Date().toISOString()
+                    });
+                    photoSaved=true;
+
+                    await put("embeddings",{
+                        id:"emb-"+photoId,
+                        photoId,
+                        meterTypeId,
+                        vector:embedding,
+                        created:new Date().toISOString()
+                    });
+
+                    added++;
+                }catch(err){
+                    console.error("Chyba:",file.name,err);
+                    failed++;
+                    if(photoSaved){
+                        try{await deleteRecord("photos",photoId);}catch(_){}
+                    }
+                    if(err?.name==="QuotaExceededError"){
+                        alert("Prekročený limit úložiska prehliadača.");
+                        break;
+                    }
+                }
+            }
+
+            await rebuildPrototype(meterTypeId);
+        }catch(err){
+            console.error(err);
+            alert("CLIP chyba: "+err.message);
+        }
+
+        setStatus(
+            `Pridaných ${added} fotografií`+
+            (failed?`, zlyhalo ${failed}.`:".")
+        );
+
+        openPhotoIds.add(meterTypeId);
+        await refreshUI();
+    };
+    input.click();
+};
+
+async function rebuildPrototype(meterTypeId){
+    const embeddings=await getAllByIndex(
+        "embeddings","meterTypeId",meterTypeId
+    );
+    const vectors=embeddings.map(x=>x.vector).filter(Array.isArray);
+
+    if(!vectors.length){
+        await deleteRecord("prototypes",meterTypeId);
+        return;
+    }
+
+    const prototype=averageVectors(vectors);
+
+    await put("prototypes",{
+        meterTypeId,
+        vector:prototype,
+        count:vectors.length,
+        updated:new Date().toISOString()
+    });
+}
+
+/* =========================
+   FOTOGRAFIE UI
+========================= */
+async function showPhotos(meterTypeId){
+    const container=document.getElementById("photos-"+meterTypeId);
+    if(!container)return;
+
+    container.querySelectorAll("img").forEach(img=>{
+        if(img.src.startsWith("blob:"))URL.revokeObjectURL(img.src);
+    });
+    container.innerHTML="";
+
+    const photos=await getAllByIndex("photos","meterTypeId",meterTypeId);
+    if(!photos.length){
+        container.textContent="Žiadne fotografie.";
+        return;
+    }
+
+    const wrapper=document.createElement("div");
+    wrapper.className="photos";
+
+    for(const photo of photos){
+        const div=document.createElement("div");
+        div.className="photo";
+
+        const img=document.createElement("img");
+        img.src=URL.createObjectURL(photo.blob);
+
+        const text=document.createElement("div");
+        text.textContent=photo.fileName;
+
+        const button=document.createElement("button");
+        button.className="danger";
+        button.textContent="🗑";
+        button.onclick=()=>deletePhoto(photo.id,meterTypeId);
+
+        div.append(img,text,button);
+        wrapper.appendChild(div);
+    }
+    container.appendChild(wrapper);
+}
+
+window.togglePhotos=async function(meterTypeId){
+    const div=document.getElementById("photos-"+meterTypeId);
+    if(!div)return;
+
+    if(div.style.display==="none"){
+        div.style.display="block";
+        openPhotoIds.add(meterTypeId);
+        await showPhotos(meterTypeId);
+    }else{
+        div.querySelectorAll("img").forEach(img=>{
+            if(img.src.startsWith("blob:"))URL.revokeObjectURL(img.src);
+        });
+        div.innerHTML="";
+        div.style.display="none";
+        openPhotoIds.delete(meterTypeId);
+    }
+};
+
+async function deletePhoto(photoId,meterTypeId){
+    if(!confirm(
+        "Naozaj chceš vymazať túto fotografiu?\n\n"+
+        "Vymaže sa aj jej embedding."
+    ))return;
+
+    const embeddings=await getAllByIndex("embeddings","photoId",photoId);
+    for(const emb of embeddings)await deleteRecord("embeddings",emb.id);
+
+    await deleteRecord("photos",photoId);
+    await rebuildPrototype(meterTypeId);
+
+    setStatus("Fotografia bola odstránená.");
+    openPhotoIds.add(meterTypeId);
+    await refreshUI();
+}
+
+window.deleteMeterType=async function(meterTypeId){
+    const types=await getAll("meterTypes");
+    const type=types.find(x=>x.id===meterTypeId);
+    if(!type)return;
+
+    if(!confirm(
+        `POZOR!\n\nVymazaním typu "${type.name}" sa odstránia fotografie, embeddingy, prototype a nastavenia.\n\nPokračovať?`
+    ))return;
+
+    await deleteByIndex("photos","meterTypeId",meterTypeId);
+    await deleteByIndex("embeddings","meterTypeId",meterTypeId);
+    await deleteRecord("prototypes",meterTypeId);
+    await deleteRecord("meterTypes",meterTypeId);
+
+    openPhotoIds.delete(meterTypeId);
+    setStatus("Typ merača bol vymazaný.");
+    await refreshUI();
+};
+
+/* =========================
+   VYKRESLENIE
+========================= */
+async function renderLearning(){
+    const container=document.getElementById("meterTypes");
+    container.innerHTML="";
+
+    const types=await getAll("meterTypes");
+    const prototypes=await getAll("prototypes");
+
+    if(!types.length){
+        container.innerHTML="<p>Žiadne naučené typy.</p>";
+        return;
+    }
+
+    for(const type of types){
+        const photos=await getAllByIndex("photos","meterTypeId",type.id);
+        const prototype=prototypes.find(x=>x.meterTypeId===type.id);
+        const isOpen=openPhotoIds.has(type.id);
+
+        const div=document.createElement("div");
+        div.className="meter";
+        div.innerHTML=`
+            <h3>${escapeHTML(type.name)}</h3>
+            <p>ID: <small>${escapeHTML(type.id)}</small></p>
+            <p>🖼 Naučené fotografie: <strong>${photos.length}</strong></p>
+            <p>🧠 Prototype:
+                ${prototype?"✓ vytvorený ("+prototype.count+" foto)":"–"}
+            </p>
+            <button class="primary" onclick="addPhotos('${type.id}')">+ Pridať fotografie</button>
+            <button class="secondary" onclick="editMeterType('${type.id}')">✏️ Upraviť názov</button>
+            <button class="secondary" onclick="togglePhotos('${type.id}')">🖼 Fotografie</button>
+            <button class="danger" onclick="deleteMeterType('${type.id}')">🗑 Vymazať typ</button>
+            <div id="photos-${type.id}" style="display:${isOpen?"block":"none"};margin-top:10px"></div>
+        `;
+        container.appendChild(div);
+    }
+
+    for(const meterTypeId of openPhotoIds)await showPhotos(meterTypeId);
+}
+
+async function renderUsage(){
+    const container=document.getElementById("usageTypes");
+    container.innerHTML="";
+
+    const types=await getAll("meterTypes");
+    if(!types.length){
+        container.textContent="Zatiaľ nie sú naučené žiadne typy.";
+        return;
+    }
+
+    for(const type of types){
+        const photos=await getAllByIndex("photos","meterTypeId",type.id);
+        const div=document.createElement("div");
+        div.className="meter";
+        div.innerHTML=`
+            <strong>${escapeHTML(type.name)}</strong>
+            — ${photos.length} fotografií
+        `;
+        container.appendChild(div);
+    }
+}
+
+/* =========================
+   NÁHĽAD + ROTÁCIA
+========================= */
+async function loadImageToCanvas(file){
+    let bitmap;
+    try{
+        bitmap = await createImageBitmap(file, { imageOrientation: "from-image" });
+    }catch(_){
+        bitmap = await createImageBitmap(file);
+    }
+
+    const canvas = document.createElement("canvas");
+    canvas.width  = bitmap.width;
+    canvas.height = bitmap.height;
+    canvas.getContext("2d").drawImage(bitmap, 0, 0);
+    if(bitmap.close) bitmap.close();
+
+    return canvas;
+}
+
+function renderPreview(){
+    const img  = document.getElementById("previewImg");
+    const info = document.getElementById("rotationInfo");
+    if(!currentImageBitmap) return;
+
+    if(img.src && img.src.startsWith("blob:")) URL.revokeObjectURL(img.src);
+
+    currentImageBitmap.toBlob(blob=>{
+        if(!blob) return;
+        img.src = URL.createObjectURL(blob);
+        img.style.transform = "";
+        info.textContent = `Otočenie: ${currentRotation}°`;
+    }, "image/jpeg", 0.9);
+}
+
+window.rotatePreview = function(){
+    if(!currentImageBitmap) return;
+    currentRotation = (currentRotation + 90) % 360;
+
+    const src = currentImageBitmap;
+    const rotated = document.createElement("canvas");
+    rotated.width  = src.height;
+    rotated.height = src.width;
+    const ctx = rotated.getContext("2d");
+    ctx.translate(rotated.width/2, rotated.height/2);
+    ctx.rotate(Math.PI/2);
+    ctx.drawImage(src, -src.width/2, -src.height/2);
+
+    currentImageBitmap = rotated;
+    renderPreview();
+};
+
+window.resetPreview = function(){
+    currentImageBitmap = null;
+    currentRotation    = 0;
+    currentSourceFile  = null;
+
+    const wrap = document.getElementById("previewWrap");
+    const img  = document.getElementById("previewImg");
+    const info = document.getElementById("rotationInfo");
+
+    if(img.src && img.src.startsWith("blob:")) URL.revokeObjectURL(img.src);
+    img.removeAttribute("src");
+    info.textContent = "";
+    wrap.style.display = "none";
+
+    document.getElementById("recognizeBtn").disabled = true;
+    document.getElementById("recognitionResult").innerHTML = "";
+
+    const cam = document.getElementById("cameraInput");
+    const gal = document.getElementById("galleryInput");
+    if(cam) cam.value = "";
+    if(gal) gal.value = "";
+};
+
+async function handleFileSelected(file){
+    if(!file) return;
+    currentSourceFile = file;
+    try{
+        currentImageBitmap = await loadImageToCanvas(file);
+        currentRotation = 0;
+        document.getElementById("previewWrap").style.display = "block";
+        renderPreview();
+        document.getElementById("recognizeBtn").disabled = false;
+        setStatus("Fotografia pripravená. Ťukni na náhľad pre otočenie o 90°.");
+    }catch(err){
+        console.error(err);
+        alert("Nepodarilo sa načítať obrázok: " + err.message);
+    }
+}
+
+/* Napojenie inputov a kliknutia na náhľad */
+(function initPreviewHandlers(){
+    const bind = ()=>{
+        const cam = document.getElementById("cameraInput");
+        const gal = document.getElementById("galleryInput");
+        const img = document.getElementById("previewImg");
+        if(!cam || !gal || !img) return;
+
+        cam.addEventListener("change", e=>handleFileSelected(e.target.files[0]));
+        gal.addEventListener("change", e=>handleFileSelected(e.target.files[0]));
+
+        img.addEventListener("click", ()=>rotatePreview());
+        img.addEventListener("touchend", e=>{
+            e.preventDefault();
+            rotatePreview();
+        }, { passive:false });
+    };
+    if(document.readyState === "loading")
+        document.addEventListener("DOMContentLoaded", bind);
+    else
+        bind();
+})();
+
+/* =========================
+   ROZPOZNÁVANIE
+========================= */
+window.runRecognition=async function(){
+    const resultDiv=document.getElementById("recognitionResult");
+
+    if(!currentImageBitmap){
+        alert("Najprv vyber alebo odfoť fotografiu.");
+        return;
+    }
+
+    resultDiv.innerHTML="";
+    const button=document.getElementById("recognizeBtn");
+    button.disabled=true;
+
+    try{
+        setStatus("Analyzujem fotografiu pomocou CLIP…");
+
+        const blob = await new Promise(res=>currentImageBitmap.toBlob(res,"image/jpeg",0.92));
+        if(!blob) throw new Error("Nepodarilo sa pripraviť obrázok.");
+
+        // Normalizovaný obrázok (už otočený) – použije sa pre CLIP aj neskôr pre OCR
+        window.lastNormalizedBlob = blob;
+
+        const testEmbedding=await getCLIPEmbedding(blob);
+
+        const prototypes=await getAll("prototypes");
+        const types=await getAll("meterTypes");
+
+        if(!prototypes.length){
+            resultDiv.innerHTML='<p class="warn">Nie sú dostupné žiadne naučené prototypy.</p>';
+            return;
+        }
+
+        const results=[];
+
+        for(const prototype of prototypes){
+            const type=types.find(t=>t.id===prototype.meterTypeId);
+            if(!type||!Array.isArray(prototype.vector))continue;
+
+            try{
+                const score=cosineSimilarity(testEmbedding,prototype.vector);
+                results.push({type,score,count:prototype.count||0});
+            }catch(err){
+                console.warn("Preskakujem prototype:",type.name,err);
+            }
+        }
+
+        results.sort((a,b)=>b.score-a.score);
+
+        if(!results.length){
+            resultDiv.textContent="Nebolo možné porovnať fotografiu.";
+            return;
+        }
+
+        const best=results[0];
+        let html=`
+            <div class="result">
+                <h3>🎯 Výsledok</h3>
+                <p>Najpodobnejší typ:</p>
+                <p><strong>${escapeHTML(best.type.name)}</strong></p>
+                <p class="score">Podobnosť: <strong>${best.score.toFixed(4)}</strong></p>
+                <p>Počet fotografií v prototype: ${best.count}</p>
+                <hr>
+                <h4>Ďalší kandidáti</h4>
+        `;
+
+        results.slice(1,3).forEach((r,i)=>{
+            html+=`<p>${i+2}. ${escapeHTML(r.type.name)} — ${r.score.toFixed(4)}</p>`;
+        });
+        html+="</div>";
+
+        resultDiv.innerHTML=html;
+        setStatus(`Rozpoznaný typ: ${best.type.name}`);
+    }catch(err){
+        console.error(err);
+        setStatus("Chyba pri rozpoznávaní.");
+        resultDiv.innerHTML=
+            `<p class="warn">${escapeHTML(err.message)}</p>`;
+    }finally{
+        button.disabled=false;
+    }
+};
+
+/* =========================
+   INFO
+========================= */
+async function updateDBInfo(){
+    const types=await getAll("meterTypes");
+    const photos=await getAll("photos");
+    const embeddings=await getAll("embeddings");
+    const prototypes=await getAll("prototypes");
+
+    document.getElementById("dbInfo").textContent=
+        JSON.stringify({
+            meterTypes:types.length,
+            photos:photos.length,
+            embeddings:embeddings.length,
+            prototypes:prototypes.length,
+            database:DB_NAME,
+            version:DB_VERSION,
+            embeddingSize:EMBEDDING_SIZE,
+            clipModel:"Xenova/clip-vit-base-patch16"
+        },null,2);
+}
+
+/* =========================
+   EXPORT
+========================= */
+window.exportDatabase=async function(){
+    try{
+        setStatus("Pripravujem ZIP zálohu…");
+
+        const types=await getAll("meterTypes");
+        const photos=await getAll("photos");
+        const embeddings=await getAll("embeddings");
+        const prototypes=await getAll("prototypes");
+
+        const zip=new JSZip();
+
+        const manifest={
+            version:2,
+            database:DB_NAME,
+            exported:new Date().toISOString(),
+            embeddingSize:EMBEDDING_SIZE,
+            clipModel:"Xenova/clip-vit-base-patch16",
+            counts:{
+                meterTypes:types.length,
+                photos:photos.length,
+                embeddings:embeddings.length,
+                prototypes:prototypes.length
+            }
+        };
+
+        zip.file("manifest.json",JSON.stringify(manifest,null,2));
+        zip.file("meterTypes.json",JSON.stringify(types,null,2));
+        zip.file("embeddings.json",JSON.stringify(embeddings,null,2));
+        zip.file("prototypes.json",JSON.stringify(prototypes,null,2));
+
+        const photoManifest=[];
+
+        for(const photo of photos){
+            const extension=getExtension(photo.fileName);
+            const path="photos/"+photo.id+extension;
+            zip.file(path,photo.blob);
+            photoManifest.push({
+                id:photo.id,
+                meterTypeId:photo.meterTypeId,
+                fileName:photo.fileName,
+                path,
+                created:photo.created
+            });
+        }
+
+        zip.file("photos.json",JSON.stringify(photoManifest,null,2));
+
+        const blob=await zip.generateAsync({type:"blob"});
+        const url=URL.createObjectURL(blob);
+        const a=document.createElement("a");
+        a.href=url;
+        a.download="merace-backup-"+new Date().toISOString().slice(0,10)+".zip";
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(()=>URL.revokeObjectURL(url),1000);
+
+        setStatus("ZIP záloha bola vytvorená.");
+    }catch(err){
+        console.error(err);
+        setStatus("Export zlyhal: "+err.message);
+    }
+};
+
+/* =========================
+   IMPORT
+========================= */
+window.importDatabase=async function(){
+    const input=document.getElementById("importFile");
+    const file=input.files[0];
+
+    if(!file){alert("Najprv vyber ZIP súbor.");return;}
+    if(!confirm("Import nahradí aktuálne údaje v databáze.\n\nPokračovať?"))return;
+
+    try{
+        setStatus("Načítavam ZIP…");
+        const zip=await JSZip.loadAsync(file);
+
+        const required=[
+            "meterTypes.json",
+            "embeddings.json",
+            "prototypes.json",
+            "photos.json"
+        ];
+
+        for(const name of required){
+            if(!zip.file(name))throw new Error("Chýba "+name);
+        }
+
+        const types=JSON.parse(await zip.file("meterTypes.json").async("string"));
+        const embeddings=JSON.parse(await zip.file("embeddings.json").async("string"));
+        const prototypes=JSON.parse(await zip.file("prototypes.json").async("string"));
+        const photoManifest=JSON.parse(await zip.file("photos.json").async("string"));
+
+        if(!Array.isArray(types)||!Array.isArray(embeddings)||
+           !Array.isArray(prototypes)||!Array.isArray(photoManifest))
+            throw new Error("Neplatná štruktúra ZIP zálohy.");
+
+        const manifestFile=zip.file("manifest.json");
+        if(manifestFile){
+            const manifest=JSON.parse(await manifestFile.async("string"));
+            if(manifest.embeddingSize &&
+               manifest.embeddingSize!==EMBEDDING_SIZE){
+                throw new Error(
+                    `Záloha má embedding ${manifest.embeddingSize}, `+
+                    `aktuálna verzia očakáva ${EMBEDDING_SIZE}.`
+                );
+            }
+        }
+
+        await clearDatabase(false);
+
+        for(const type of types)await put("meterTypes",type);
+        for(const embedding of embeddings)await put("embeddings",embedding);
+        for(const prototype of prototypes)await put("prototypes",prototype);
+
+        let restoredPhotos=0;
+        for(const item of photoManifest){
+            const zipFile=zip.file(item.path);
+            if(!zipFile)continue;
+
+            const blob=await zipFile.async("blob");
+            await put("photos",{
+                id:item.id,
+                meterTypeId:item.meterTypeId,
+                blob,
+                fileName:item.fileName,
+                created:item.created
+            });
+            restoredPhotos++;
+        }
+
+        input.value="";
+        setStatus(`Import dokončený. Obnovených fotografií: ${restoredPhotos}.`);
+        await refreshUI();
+    }catch(err){
+        console.error(err);
+        setStatus("Chyba pri importe: "+err.message);
+        input.value="";
+    }
+};
+
+/* =========================
+   CLEAR
+========================= */
+window.clearDatabase=async function(ask=true){
+    if(ask&&!confirm("Naozaj vymazať CELÚ databázu?"))return;
+
+    const stores=["meterTypes","photos","embeddings","prototypes","settings"];
+    const tx=db.transaction(stores,"readwrite");
+    for(const store of stores)tx.objectStore(store).clear();
+
+    await new Promise((resolve,reject)=>{
+        tx.oncomplete=resolve;
+        tx.onerror=()=>reject(tx.error);
+        tx.onabort=()=>reject(tx.error||new Error("Mazanie zlyhalo."));
+    });
+
+    openPhotoIds.clear();
+    setStatus("Databáza bola vymazaná.");
+    await refreshUI();
+};
+
+function getExtension(filename){
+    if(!filename)return ".jpg";
+    const index=filename.lastIndexOf(".");
+    return index===-1?".jpg":filename.slice(index).toLowerCase();
+}
+
+async function refreshUI(){
+    if(!db)return;
+    await renderLearning();
+    if(document.getElementById("usage").style.display!=="none")
+        await renderUsage();
+    await updateDBInfo();
+}
+
+/* =========================
+   START
+========================= */
+openDB().then(async()=>{
+    setStatus("Databáza pripravená. CLIP sa načíta až pri prvom pou
