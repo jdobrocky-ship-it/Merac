@@ -1,0 +1,91 @@
+<!doctype html><html lang="sk"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Merače – CLIP + OCR test</title>
+<style>
+body{font-family:Arial;margin:0;background:#f2f2f2}header{background:#222;color:#fff;padding:15px;text-align:center}main{max-width:900px;margin:auto;padding:15px}section{background:#fff;padding:15px;margin:12px 0;border-radius:10px}button{padding:10px;margin:4px;border:0;border-radius:7px}.primary{background:#1976d2;color:white}.danger{background:#d32f2f;color:white}input{padding:9px;margin:4px}.meter{border:1px solid #ccc;padding:10px;margin:8px 0;border-radius:8px}.photos{display:flex;flex-wrap:wrap;gap:8px}.photo{width:120px}.photo img{width:120px;height:90px;object-fit:cover}.preview{text-align:center}.preview img{max-width:100%;max-height:55vh}.result{background:#eef6ff;padding:12px;border-radius:8px;margin-top:10px}pre{white-space:pre-wrap}
+</style></head><body>
+<header><h2>🔧 Merače – CLIP + OCR test</h2></header><main>
+<div id="status">Inicializácia...</div>
+<section><button class="primary" onclick="learning()">🔧 UČENIE</button><button onclick="usage()">📷 POUŽITIE</button></section>
+
+<section id="learn"><h2>Učenie</h2>
+<input id="typeName" placeholder="Napr. Kamstrup 603"><button class="primary" onclick="addType()">+ Pridať typ</button>
+<div id="types"></div></section>
+
+<section id="use" style="display:none"><h2>Použitie</h2>
+<p>Vyber fotku z galérie alebo fotoaparátu. Ťuknutie na náhľad otočí obrázok o 90°.</p>
+<input id="gallery" type="file" accept="image/*"><input id="camera" type="file" accept="image/*" capture="environment">
+<div id="prev" class="preview" style="display:none"><img id="img"><div id="rot">0°</div></div>
+<button id="rec" class="primary" disabled onclick="recognize()">🔍 Rozpoznať typ</button>
+<button id="ocr" disabled onclick="doOCR()">🔤 OCR</button>
+<div id="result"></div><div id="ocrResult"></div></section>
+
+<section><h2>💾 Export / Import</h2>
+<button class="primary" onclick="exportDB()">⬇️ Export ZIP</button>
+<input id="imp" type="file" accept=".zip"><button class="primary" onclick="importDB()">⬆️ Import ZIP</button>
+<button class="danger" onclick="clearDB()">🗑 Vymazať databázu</button></section>
+<section><pre id="info"></pre></section>
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+<script type="module">
+import {AutoProcessor,CLIPVisionModelWithProjection,RawImage}
+from "https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.0.0";
+
+const DB="MeraceTestDB",VER=1,MODEL="Xenova/clip-vit-base-patch16";
+let db,processor,model,modelPromise,bitmap,blob,angle=0,worker;
+const $=x=>document.getElementById(x);
+const esc=x=>String(x??"").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;");
+
+function st(x){$("status").textContent=x}
+function openDB(){return new Promise((ok,no)=>{
+ let r=indexedDB.open(DB,VER);
+ r.onupgradeneeded=e=>{let d=e.target.result;
+  if(!d.objectStoreNames.contains("meterTypes"))d.createObjectStore("meterTypes",{keyPath:"id"});
+  if(!d.objectStoreNames.contains("photos")){let s=d.createObjectStore("photos",{keyPath:"id"});s.createIndex("type","type")}
+  if(!d.objectStoreNames.contains("embeddings")){let s=d.createObjectStore("embeddings",{keyPath:"id"});s.createIndex("photoId","photoId");s.createIndex("type","type")}
+  if(!d.objectStoreNames.contains("prototypes"))d.createObjectStore("prototypes",{keyPath:"type"});
+ };
+ r.onsuccess=e=>{db=e.target.result;ok()};r.onerror=()=>no(r.error)
+})}
+function all(s){return new Promise((ok,no)=>{let r=db.transaction(s).objectStore(s).getAll();r.onsuccess=()=>ok(r.result);r.onerror=()=>no(r.error)})}
+function idx(s,i,v){return new Promise((ok,no)=>{let r=db.transaction(s).objectStore(s).index(i).getAll(v);r.onsuccess=()=>ok(r.result);r.onerror=()=>no(r.error)})}
+function put(s,x){return new Promise((ok,no)=>{let t=db.transaction(s,"readwrite");t.objectStore(s).put(x);t.oncomplete=ok;t.onerror=()=>no(t.error)})}
+function del(s,k){return new Promise((ok,no)=>{let t=db.transaction(s,"readwrite");t.objectStore(s).delete(k);t.oncomplete=ok;t.onerror=()=>no(t.error)})}
+function norm(v){let n=Math.sqrt(v.reduce((a,x)=>a+x*x,0));return n?v.map(x=>x/n):v}
+function avg(vs){let r=Array(vs[0].length).fill(0);for(let v of vs)for(let i=0;i<v.length;i++)r[i]+=v[i];return norm(r.map(x=>x/vs.length))}
+function cos(a,b){let d=0,x=0,y=0;for(let i=0;i<a.length;i++){d+=a[i]*b[i];x+=a[i]*a[i];y+=b[i]*b[i]}return d/Math.sqrt(x*y)}
+
+async function clip(){if(modelPromise)return modelPromise;modelPromise=(async()=>{
+ st("Načítavam CLIP…");processor=await AutoProcessor.from_pretrained(MODEL);model=await CLIPVisionModelWithProjection.from_pretrained(MODEL);st("CLIP pripravený")
+})();return modelPromise}
+async function emb(b){await clip();let im=await RawImage.fromBlob(b),inp=await processor(im),o=await model(inp);return norm(Array.from(o.image_embeds.data))}
+
+function canvas(){let c=document.createElement("canvas"),w=bitmap.width,h=bitmap.height,s=angle%180!==0;c.width=s?h:w;c.height=s?w:h;let x=c.getContext("2d");x.translate(c.width/2,c.height/2);x.rotate(angle*Math.PI/180);x.drawImage(bitmap,-w/2,-h/2);return c}
+function makeBlob(){return new Promise((ok,no)=>canvas().toBlob(b=>b?ok(b):no(new Error("Chyba obrázka")),"image/jpeg",.92))}
+async function preview(){blob=await makeBlob();let i=$("img");if(i.dataset.u)URL.revokeObjectURL(i.dataset.u);i.dataset.u=URL.createObjectURL(blob);i.src=i.dataset.u;$("rot").textContent="Otočenie: "+angle+"°"}
+async function select(f){if(!f)return;bitmap?.close?.();bitmap=await createImageBitmap(f);angle=0;await preview();$("prev").style.display="block";$("rec").disabled=$("ocr").disabled=false}
+$("gallery").onchange=e=>select(e.target.files[0]);$("camera").onchange=e=>select(e.target.files[0]);$("img").onclick=async()=>{angle=(angle+90)%360;await preview()};
+
+window.learning=()=>{$("learn").style.display="block";$("use").style.display="none"};
+window.usage=()=>{$("learn").style.display="none";$("use").style.display="block"};
+
+window.addType=async()=>{let n=$("typeName").value.trim();if(!n)return;await put("meterTypes",{id:crypto.randomUUID(),name:n});$("typeName").value="";await render()};
+window.addPhotos=async type=>{
+ let i=document.createElement("input");i.type="file";i.accept="image/*";i.multiple=true;i.onchange=async()=>{
+  let fs=[...i.files],ok=0;for(let f of fs)try{st("CLIP spracúva "+f.name);let id=crypto.randomUUID(),v=await emb(f);await put("photos",{id,type,blob:f,name:f.name});await put("embeddings",{id:"e"+id,photoId:id,type,vector:v});ok++}catch(e){console.error(e)}
+  let es=await idx("embeddings","type",type);if(es.length)await put("prototypes",{type,vector:avg(es.map(x=>x.vector)),count:es.length});st("Pridaných "+ok+" fotografií");await render()
+ };i.click()
+};
+window.recognize=async()=>{try{st("Rozpoznávam…");let v=await emb(blob),ts=await all("meterTypes"),ps=await all("prototypes"),r=ps.map(p=>({p,t:ts.find(t=>t.id===p.type),s:cos(v,p.vector)})).filter(x=>x.t).sort((a,b)=>b.s-a.s);$("result").innerHTML=r.length?`<div class=result><b>🎯 ${esc(r[0].t.name)}</b><br>Podobnosť: ${r[0].s.toFixed(4)}</div>`:"<div class=result>Nie sú naučené typy.</div>";st("Hotovo")}catch(e){$("result").textContent=e.message}};
+window.doOCR=async()=>{try{$("ocr").disabled=true;if(!worker)worker=await Tesseract.createWorker("eng");st("OCR pracuje…");let r=await worker.recognize(blob);$("ocrResult").innerHTML="<div class=result><b>OCR:</b><pre>"+esc(r.data.text)+"</pre></div>";st("OCR hotové")}catch(e){$("ocrResult").textContent=e.message}finally{$("ocr").disabled=false}};
+
+async function render(){let c=$("types");c.innerHTML="";let ts=await all("meterTypes"),ps=await all("prototypes");for(let t of ts){let ph=await idx("photos","type",t.id),d=document.createElement("div");d.className="meter";d.innerHTML=`<b>${esc(t.name)}</b> – ${ph.length} foto<br><button class="primary" onclick="addPhotos('${t.id}')">+ Fotografie</button>`;c.append(d)}$("info").textContent=JSON.stringify({types:ts.length,photos:(await all("photos")).length,embeddings:(await all("embeddings")).length,prototypes:ps.length,model:MODEL},null,2)}
+
+window.exportDB=async()=>{let z=new JSZip(),ts=await all("meterTypes"),ps=await all("photos"),es=await all("embeddings"),pr=await all("prototypes");z.file("meterTypes.json",JSON.stringify(ts));z.file("embeddings.json",JSON.stringify(es));z.file("prototypes.json",JSON.stringify(pr));let m=[];for(let p of ps){let path="photos/"+p.id+".jpg";z.file(path,p.blob);m.push({id:p.id,type:p.type,name:p.name,path})}z.file("photos.json",JSON.stringify(m));let b=await z.generateAsync({type:"blob"}),a=document.createElement("a");a.href=URL.createObjectURL(b);a.download="merace-backup.zip";a.click();st("Export hotový")};
+window.importDB=async()=>{let f=$("imp").files[0];if(!f)return;let z=await JSZip.loadAsync(f);await clearDB(false);for(let x of JSON.parse(await z.file("meterTypes.json").async("string")))await put("meterTypes",x);for(let x of JSON.parse(await z.file("embeddings.json").async("string")))await put("embeddings",x);for(let x of JSON.parse(await z.file("prototypes.json").async("string")))await put("prototypes",x);for(let x of JSON.parse(await z.file("photos.json").async("string"))){let q=z.file(x.path);if(q)await put("photos",{id:x.id,type:x.type,name:x.name,blob:await q.async("blob")})}await render();st("Import hotový")};
+window.clearDB=async ask=>{if(ask!==false&&!confirm("Vymazať databázu?"))return;for(let s of["meterTypes","photos","embeddings","prototypes"]){let t=db.transaction(s,"readwrite");t.objectStore(s).clear();await new Promise(r=>t.oncomplete=r)}await render();st("Databáza vymazaná")};
+
+openDB().then(render).then(()=>st("Databáza pripravená. CLIP sa načíta pri prvom použití.")).catch(e=>st("Chyba: "+e.message));
+</script></body></html>
